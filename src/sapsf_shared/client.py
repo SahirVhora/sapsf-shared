@@ -1,0 +1,344 @@
+"""OData v2 HTTP client for SAP SuccessFactors.
+
+Features:
+  - requests.Session with configurable auth (Basic, OAuth, Certificate)
+  - 3 retries with exponential back-off on 429 and 5xx
+  - Automatic OData __next pagination
+  - Configurable per-request timeout
+  - Context-manager support for automatic cleanup
+"""
+
+from __future__ import annotations
+
+import json
+import logging
+import time
+from typing import Any
+
+import requests
+
+from sapsf_shared.auth import AuthConfig, build_requests_auth
+from sapsf_shared.exceptions import SFClientError
+
+logger = logging.getLogger(__name__)
+
+# HTTP status codes that trigger a retry
+RETRY_STATUS_CODES = frozenset({429, 500, 502, 503, 504})
+MAX_RETRIES = 3
+BACKOFF_SECONDS = (1, 2, 4)
+
+
+class SFClient:
+    """Thin OData v2 client bound to ONE SuccessFactors tenant.
+
+    Usage:
+        config = AuthConfig(base_url="https://api.sapsf.com", username="...", password="...")
+        with SFClient(config) as client:
+            records = client.get_entity_by_code("FODepartment", "IT")
+    """
+
+    def __init__(
+        self,
+        auth_config: AuthConfig,
+        *,
+        default_top: int = 100,
+        json_indent: int | None = None,
+    ) -> None:
+        self.config = auth_config
+        self.base_url = auth_config.base_url.rstrip("/")
+        self.default_top = default_top
+        self.json_indent = json_indent
+
+        auth_obj, cert = build_requests_auth(auth_config)
+
+        self._session = requests.Session()
+        self._session.auth = auth_obj  # type: ignore[assignment]
+        if cert:
+            self._session.cert = cert
+        self._session.headers.update(
+            {
+                "Accept": "application/json",
+                "Content-Type": "application/json",
+            }
+        )
+
+    # ------------------------------------------------------------------
+    # Internal helpers
+    # ------------------------------------------------------------------
+
+    def _url(self, entity_set: str) -> str:
+        return f"{self.base_url}/{entity_set}"
+
+    def _request_with_retry(
+        self,
+        method: str,
+        url: str,
+        **kwargs: Any,
+    ) -> requests.Response:
+        """Execute an HTTP request with retry logic on transient errors."""
+        last_exc: Exception | None = None
+        for attempt in range(MAX_RETRIES):
+            try:
+                resp = self._session.request(
+                    method, url, timeout=self.config.timeout_sec, **kwargs
+                )
+                if resp.status_code not in RETRY_STATUS_CODES:
+                    return resp
+                wait = BACKOFF_SECONDS[min(attempt, len(BACKOFF_SECONDS) - 1)]
+                logger.warning(
+                    "HTTP %s from %s (attempt %d/%d) - retrying in %ds",
+                    resp.status_code,
+                    url,
+                    attempt + 1,
+                    MAX_RETRIES,
+                    wait,
+                )
+                time.sleep(wait)
+                last_exc = None
+            except requests.exceptions.RequestException as exc:
+                wait = BACKOFF_SECONDS[min(attempt, len(BACKOFF_SECONDS) - 1)]
+                logger.warning(
+                    "Request error on %s (attempt %d/%d): %s - retrying in %ds",
+                    url,
+                    attempt + 1,
+                    MAX_RETRIES,
+                    exc,
+                    wait,
+                )
+                last_exc = exc
+                time.sleep(wait)
+
+        if last_exc:
+            raise SFClientError(
+                f"Request failed after {MAX_RETRIES} attempts: {last_exc}",
+                url=url,
+            )
+        # All retries exhausted, return the last (still bad) response
+        return resp
+
+    def _check_response(self, resp: requests.Response, url: str) -> dict[str, Any]:
+        """Parse JSON, handle auth errors, and return the OData payload dict."""
+        if resp.status_code == 401:
+            raise SFClientError(
+                "Authentication failed — check username, password, and company_id",
+                status_code=401,
+                url=url,
+            )
+        if resp.status_code == 403:
+            raise SFClientError(
+                "Access denied — check API user permissions",
+                status_code=403,
+                url=url,
+            )
+        if resp.status_code >= 400:
+            body = resp.text[:2000]
+            raise SFClientError(
+                f"HTTP {resp.status_code} from {url}",
+                status_code=resp.status_code,
+                body=body,
+                url=url,
+            )
+        try:
+            return resp.json()
+        except json.JSONDecodeError as exc:
+            raise SFClientError(
+                f"Non-JSON response from {url}: {exc}",
+                body=resp.text[:500],
+                url=url,
+            ) from exc
+
+    # ------------------------------------------------------------------
+    # Public API
+    # ------------------------------------------------------------------
+
+    def get(
+        self,
+        entity_set: str,
+        *,
+        top: int | None = None,
+        skip: int = 0,
+        select: list[str] | None = None,
+        expand: list[str] | None = None,
+        filter_expr: str | None = None,
+        orderby: str | None = None,
+        params: dict[str, str] | None = None,
+    ) -> list[dict[str, Any]]:
+        """Fetch all records for *entity_set* with automatic pagination.
+
+        Args:
+            entity_set: OData entity set name (e.g. "FODepartment")
+            top: Max records per page (default: self.default_top)
+            skip: Initial $skip value
+            select: Fields to $select
+            expand: Navigation properties to $expand
+            filter_expr: OData $filter expression
+            orderby: OData $orderby expression
+            params: Any additional query parameters
+
+        Returns:
+            Flat list of record dicts from d.results across all pages.
+        """
+        url = self._url(entity_set)
+        query: dict[str, str] = {
+            "$format": "json",
+            "$top": str(top or self.default_top),
+            "$skip": str(skip),
+        }
+        if select:
+            query["$select"] = ",".join(select)
+        if expand:
+            query["$expand"] = ",".join(expand)
+        if filter_expr:
+            query["$filter"] = filter_expr
+        if orderby:
+            query["$orderby"] = orderby
+        if params:
+            query.update(params)
+
+        return self._paginate(url, query)
+
+    def get_entity_by_code(
+        self,
+        entity_set: str,
+        external_code: str,
+        *,
+        expand: str | None = None,
+        extra_params: dict[str, str] | None = None,
+    ) -> list[dict[str, Any]]:
+        """Fetch all records where externalCode = *external_code*.
+
+        Args:
+            expand: comma-separated navigation properties to $expand
+            extra_params: additional OData query params to merge in
+        """
+        url = self._url(entity_set)
+        params: dict[str, str] = {
+            "$filter": f"externalCode eq '{external_code}'",
+            "$format": "json",
+            "$top": str(self.default_top),
+        }
+        if expand:
+            params["$expand"] = expand
+        if extra_params:
+            params.update(extra_params)
+        return self._paginate(url, params)
+
+    def _paginate(
+        self,
+        url: str,
+        params: dict[str, str] | None,
+    ) -> list[dict[str, Any]]:
+        """Follow OData __next links until exhausted."""
+        results: list[dict[str, Any]] = []
+        next_url: str | None = url
+        first_call = True
+
+        while next_url:
+            resp = self._request_with_retry(
+                "GET",
+                next_url,
+                params=params if first_call else None,
+            )
+            first_call = False
+            payload = self._check_response(resp, next_url or url)
+            data = payload.get("d", {})
+            batch = data.get("results", [])
+            results.extend(batch)
+
+            next_url = data.get("__next")
+            logger.debug(
+                "GET %s → %d records (total so far: %d)%s",
+                next_url or url,
+                len(batch),
+                len(results),
+                " [has next]" if next_url else "",
+            )
+
+        return results
+
+    def post(
+        self,
+        entity_set: str,
+        payload: dict[str, Any],
+    ) -> tuple[int, dict[str, Any]]:
+        """POST *payload* to *entity_set*.
+
+        Returns (http_status_code, response_body_dict).
+        Raises SFClientError on network / parsing failures only.
+        """
+        url = self._url(entity_set)
+        logger.debug(
+            "POST %s payload=%s",
+            url,
+            json.dumps(payload, indent=self.json_indent)[:500],
+        )
+        resp = self._request_with_retry("POST", url, json=payload)
+        body = self._check_response(resp, url)
+        return resp.status_code, body
+
+    def patch(
+        self,
+        entity_set: str,
+        payload: dict[str, Any],
+    ) -> tuple[int, dict[str, Any]]:
+        """PATCH (upsert) *payload* to *entity_set*.
+
+        Returns (http_status_code, response_body_dict).
+        """
+        url = self._url(entity_set)
+        logger.debug("PATCH %s payload=%s", url, json.dumps(payload)[:500])
+        resp = self._request_with_retry("PATCH", url, json=payload)
+        body = self._check_response(resp, url)
+        return resp.status_code, body
+
+    def delete(
+        self,
+        entity_set: str,
+        key: str,
+    ) -> int:
+        """DELETE a record by key. Returns HTTP status code."""
+        url = f"{self._url(entity_set)}('{key}')"
+        resp = self._request_with_retry("DELETE", url)
+        return resp.status_code
+
+    def entity_exists(
+        self,
+        entity_set: str,
+        external_code: str,
+    ) -> tuple[bool, dict[str, Any] | None]:
+        """Check whether an active record exists in *entity_set*.
+
+        Returns (exists: bool, first_record: dict | None).
+        The caller should apply effective-dating logic to select the active record.
+        """
+        records = self.get_entity_by_code(entity_set, external_code)
+        if not records:
+            return False, None
+        return True, records[0]
+
+    def test_connection(self) -> tuple[bool, str]:
+        """Quick connectivity check. Returns (ok, message)."""
+        try:
+            # Metadata endpoint is a fast, read-only probe
+            url = f"{self.base_url}/$metadata"
+            resp = self._request_with_retry("GET", url, params={"$format": "json"})
+            if resp.status_code == 200:
+                return True, "Connected successfully"
+            return False, f"HTTP {resp.status_code}"
+        except SFClientError as exc:
+            return False, str(exc)
+        except Exception as exc:
+            return False, f"Connection error: {exc}"
+
+    # ------------------------------------------------------------------
+    # Lifecycle
+    # ------------------------------------------------------------------
+
+    def close(self) -> None:
+        self._session.close()
+
+    def __enter__(self) -> SFClient:
+        return self
+
+    def __exit__(self, *args: Any) -> None:
+        self.close()
