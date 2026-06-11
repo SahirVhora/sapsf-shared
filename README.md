@@ -19,6 +19,10 @@ Every SAP SF tool in your workspace reimplements:
 ## Installation
 
 ```bash
+pip install sapsf-shared          # from PyPI
+pip install "sapsf-shared[flask]"  # with Flask base
+
+# for local development
 cd sapsf/_shared
 pip install -e ".[dev,flask]"
 ```
@@ -188,5 +192,5 @@ MIT
 Depend on it from any tool:
 
 ```
-sapsf-shared @ git+https://github.com/SahirVhora/sapsf-shared
+sapsf-shared>=0.1.0
 ```
