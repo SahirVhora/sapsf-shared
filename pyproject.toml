@@ -25,6 +25,12 @@ dependencies = [
     "rich>=13.0",
 ]
 
+[project.urls]
+Homepage = "https://github.com/SahirVhora/sapsf-shared"
+Repository = "https://github.com/SahirVhora/sapsf-shared"
+Issues = "https://github.com/SahirVhora/sapsf-shared/issues"
+"SF Compass Suite" = "https://sahirvhora.github.io/sf-compass/"
+
 [project.optional-dependencies]
 flask = ["flask>=2.3"]
 dev = [
