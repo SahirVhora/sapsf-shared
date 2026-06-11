@@ -80,5 +80,13 @@ Schema identifier: `sf-compass-findings/v1`
 ## Current emitters
 
 - `sf-position-integrity-checker` - `write_findings_json` in `reporters.py`
+  (also exposed via its MCP server tool `sf_validate_positions`)
+- `sf-config-debt-radar` - `build_findings_v1` in `cli.py`, written as
+  `config_debt_findings.json` on every scan
 
-Planned: sf-config-debt-radar, sf-config-compare.
+## Consumers
+
+- `sf-compass` - [Tenant Findings Viewer](https://sahirvhora.github.io/sf-compass/findings.html)
+  loads any number of v1 files into one combined, filterable view
+
+Planned emitter: sf-config-compare.

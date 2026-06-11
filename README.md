@@ -176,3 +176,17 @@ ruff format src tests      # Formatting
 ## License
 
 MIT
+
+## Adoption status
+
+| Tool | Status |
+|---|---|
+| sf-config-compare | Adopted - `parse_sf_date` via `sapsf_shared.utils` |
+| sf-position-integrity-checker | Next - client/pagination migration pending tenant testing |
+| sf-object-sync | Planned |
+
+Depend on it from any tool:
+
+```
+sapsf-shared @ git+https://github.com/SahirVhora/sapsf-shared
+```
