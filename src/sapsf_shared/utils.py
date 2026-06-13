@@ -15,6 +15,23 @@ _SF_DATE_RE = re.compile(r"/Date\((-?\d+)\)/")
 _ACTIVE_STATUSES = {"ACTIVE", "A", "1", "TRUE", "true", "active"}
 
 
+def odata_escape(value: str) -> str:
+    """Escape a string literal for safe interpolation into an OData v2 filter.
+
+    OData v2 string literals are single-quoted; an embedded single quote must
+    be doubled (``'`` -> ``''``). Without this, a value containing a quote
+    breaks the filter syntax and enables OData injection (a caller-supplied
+    code such as ``a' or externalCode ne 'x`` would otherwise alter the query).
+
+    Always run untrusted values (external codes, picklist ids, country codes,
+    position ids) through this before building a ``$filter`` string.
+
+    >>> odata_escape("O'Brien")
+    "O''Brien"
+    """
+    return str(value).replace("'", "''")
+
+
 def parse_sf_date(raw: Any) -> date | None:
     """Parse a SuccessFactors date string to a Python date.
 
@@ -137,7 +154,7 @@ def build_odata_filter(
     parts: list[str] = []
     for field, value in filters.items():
         if isinstance(value, str):
-            parts.append(f"{field} {operator} '{value}'")
+            parts.append(f"{field} {operator} '{odata_escape(value)}'")
         else:
             parts.append(f"{field} {operator} {value}")
     return f" {combiner} ".join(parts)

@@ -7,8 +7,33 @@ from sapsf_shared.utils import (
     build_odata_filter,
     flatten_record,
     is_active_today,
+    odata_escape,
     parse_sf_date,
 )
+
+
+class TestOdataEscape:
+    def test_plain_value_unchanged(self):
+        assert odata_escape("IT") == "IT"
+
+    def test_single_quote_doubled(self):
+        assert odata_escape("O'Brien") == "O''Brien"
+
+    def test_injection_attempt_is_neutralised(self):
+        # An attacker-style value must not be able to close the literal.
+        raw = "x' or externalCode ne 'y"
+        escaped = odata_escape(raw)
+        assert "''" in escaped
+        # Rebuilt literal contains no unescaped quote that ends the string early.
+        literal = f"externalCode eq '{escaped}'"
+        assert literal == "externalCode eq 'x'' or externalCode ne ''y'"
+
+    def test_non_string_coerced(self):
+        assert odata_escape(123) == "123"
+
+    def test_build_odata_filter_escapes(self):
+        result = build_odata_filter({"name": "O'Brien"})
+        assert result == "name eq 'O''Brien'"
 
 
 class TestParseSfDate:

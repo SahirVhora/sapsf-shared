@@ -47,6 +47,8 @@ packages = ["src/sapsf_shared"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-v"
+# Allow `pytest` to run from a clean checkout without an editable install.
+pythonpath = ["src"]
 
 [tool.mypy]
 python_version = "3.11"

@@ -18,6 +18,7 @@ from sapsf_shared.utils import (
     build_odata_filter,
     flatten_record,
     is_active_today,
+    odata_escape,
     parse_sf_date,
 )
 
@@ -40,6 +41,7 @@ __all__ = [
     "is_active_today",
     "load_config",
     "load_yaml",
+    "odata_escape",
     "parse_sf_date",
     "setup_logging",
 ]

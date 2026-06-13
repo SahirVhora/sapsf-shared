@@ -19,6 +19,7 @@ import requests
 
 from sapsf_shared.auth import AuthConfig, build_requests_auth
 from sapsf_shared.exceptions import SFClientError
+from sapsf_shared.utils import odata_escape
 
 logger = logging.getLogger(__name__)
 
@@ -213,7 +214,7 @@ class SFClient:
         """
         url = self._url(entity_set)
         params: dict[str, str] = {
-            "$filter": f"externalCode eq '{external_code}'",
+            "$filter": f"externalCode eq '{odata_escape(external_code)}'",
             "$format": "json",
             "$top": str(self.default_top),
         }
