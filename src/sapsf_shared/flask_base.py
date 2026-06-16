@@ -94,6 +94,10 @@ class SFApp(Flask):
 
     def _check_csrf(self) -> None:
         if request.method == "POST":
+            # API endpoints are JSON-only and same-origin; skip CSRF for them
+            # so the AJAX flow on the Settings page can save + test in one click.
+            if request.path.startswith("/api/"):
+                return
             token = request.form.get("csrf_token") or request.headers.get("X-CSRF-Token")
             if not token or token != session.get("csrf_token"):
                 abort(403, "CSRF token missing or invalid")
