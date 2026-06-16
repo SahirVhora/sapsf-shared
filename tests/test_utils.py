@@ -136,9 +136,7 @@ class TestBuildODataFilter:
         assert result == "status eq 'A'"
 
     def test_multiple_filters(self):
-        result = build_odata_filter(
-            {"status": "A", "country": "GBR"}
-        )
+        result = build_odata_filter({"status": "A", "country": "GBR"})
         assert "status eq 'A'" in result
         assert "country eq 'GBR'" in result
 
@@ -147,9 +145,7 @@ class TestBuildODataFilter:
         assert result == "age eq 30"
 
     def test_custom_combiner(self):
-        result = build_odata_filter(
-            {"a": "1", "b": "2"}, combiner="or"
-        )
+        result = build_odata_filter({"a": "1", "b": "2"}, combiner="or")
         assert "or" in result
 
     def test_custom_operator(self):

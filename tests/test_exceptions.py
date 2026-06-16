@@ -1,6 +1,5 @@
 """Tests for sapsf_shared.exceptions."""
 
-
 from sapsf_shared.exceptions import (
     AuthError,
     SFClientError,

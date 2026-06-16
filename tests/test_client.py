@@ -23,20 +23,30 @@ def auth_config():
 class TestSFClientInit:
     def test_init(self, auth_config):
         client = SFClient(auth_config, default_top=50)
-        assert client.base_url == "https://api.example.com"
+        # SFClient normalises base_url to append /odata/v2 (unless already
+        # present) so downstream code can hit the OData endpoint directly.
+        assert client.base_url == "https://api.example.com/odata/v2"
         assert client.default_top == 50
         assert client.config == auth_config
 
     def test_trailing_slash_removed(self, auth_config):
         auth_config.base_url = "https://api.example.com/"
         client = SFClient(auth_config)
-        assert client.base_url == "https://api.example.com"
+        assert client.base_url == "https://api.example.com/odata/v2"
+
+    def test_existing_odata_path_preserved(self, auth_config):
+        # If the user already supplies an /odata path we keep it as-is
+        # rather than appending /odata/v2 a second time.
+        auth_config.base_url = "https://api.example.com/odata/v2/"
+        client = SFClient(auth_config)
+        assert client.base_url == "https://api.example.com/odata/v2"
 
 
 class TestUrlHelper:
     def test_url(self, auth_config):
         client = SFClient(auth_config)
-        assert client._url("Users") == "https://api.example.com/Users"
+        # _url("Users") is appended to the (already /odata/v2) base_url.
+        assert client._url("Users") == "https://api.example.com/odata/v2/Users"
 
 
 class TestRequestWithRetry:
@@ -142,9 +152,7 @@ class TestPagination:
     @patch("sapsf_shared.client.requests.Session.request")
     def test_single_page(self, mock_request, auth_config):
         mock_request.return_value.status_code = 200
-        mock_request.return_value.json.return_value = {
-            "d": {"results": [{"id": "1"}, {"id": "2"}]}
-        }
+        mock_request.return_value.json.return_value = {"d": {"results": [{"id": "1"}, {"id": "2"}]}}
 
         client = SFClient(auth_config)
         results = client.get("Users")
@@ -176,9 +184,7 @@ class TestGetEntityByCode:
     @patch("sapsf_shared.client.requests.Session.request")
     def test_get_entity_by_code(self, mock_request, auth_config):
         mock_request.return_value.status_code = 200
-        mock_request.return_value.json.return_value = {
-            "d": {"results": [{"externalCode": "IT"}]}
-        }
+        mock_request.return_value.json.return_value = {"d": {"results": [{"externalCode": "IT"}]}}
 
         client = SFClient(auth_config)
         results = client.get_entity_by_code("FODepartment", "IT", expand="parent")
@@ -227,9 +233,7 @@ class TestEntityExists:
     @patch("sapsf_shared.client.requests.Session.request")
     def test_exists(self, mock_request, auth_config):
         mock_request.return_value.status_code = 200
-        mock_request.return_value.json.return_value = {
-            "d": {"results": [{"externalCode": "IT"}]}
-        }
+        mock_request.return_value.json.return_value = {"d": {"results": [{"externalCode": "IT"}]}}
 
         client = SFClient(auth_config)
         exists, record = client.entity_exists("FODepartment", "IT")

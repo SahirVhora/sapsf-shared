@@ -46,7 +46,12 @@ class SFClient:
         json_indent: int | None = None,
     ) -> None:
         self.config = auth_config
-        self.base_url = auth_config.base_url.rstrip("/")
+        raw_url = auth_config.base_url.rstrip("/")
+        # Auto-append /odata/v2 if the URL doesn't already include an OData path
+        if "/odata" not in raw_url.lower():
+            self.base_url = f"{raw_url}/odata/v2"
+        else:
+            self.base_url = raw_url
         self.default_top = default_top
         self.json_indent = json_indent
 
@@ -80,9 +85,7 @@ class SFClient:
         last_exc: Exception | None = None
         for attempt in range(MAX_RETRIES):
             try:
-                resp = self._session.request(
-                    method, url, timeout=self.config.timeout_sec, **kwargs
-                )
+                resp = self._session.request(method, url, timeout=self.config.timeout_sec, **kwargs)
                 if resp.status_code not in RETRY_STATUS_CODES:
                     return resp
                 wait = BACKOFF_SECONDS[min(attempt, len(BACKOFF_SECONDS) - 1)]
@@ -121,13 +124,13 @@ class SFClient:
         """Parse JSON, handle auth errors, and return the OData payload dict."""
         if resp.status_code == 401:
             raise SFClientError(
-                "Authentication failed — check username, password, and company_id",
+                "Authentication failed - check username, password, and company_id",
                 status_code=401,
                 url=url,
             )
         if resp.status_code == 403:
             raise SFClientError(
-                "Access denied — check API user permissions",
+                "Access denied - check API user permissions",
                 status_code=403,
                 url=url,
             )
@@ -320,11 +323,19 @@ class SFClient:
     def test_connection(self) -> tuple[bool, str]:
         """Quick connectivity check. Returns (ok, message)."""
         try:
-            # Metadata endpoint is a fast, read-only probe
-            url = f"{self.base_url}/$metadata"
-            resp = self._request_with_retry("GET", url, params={"$format": "json"})
+            # Use User/$count - returns a simple JSON number, avoids
+            # Accept header issues with the XML-only $metadata endpoint
+            url = f"{self.base_url}/User/$count"
+            resp = self._request_with_retry("GET", url)
             if resp.status_code == 200:
                 return True, "Connected successfully"
+            if resp.status_code == 404:
+                # Some tenants don't expose User; try $metadata as fallback
+                url = f"{self.base_url}/$metadata"
+                resp = self._request_with_retry("GET", url)
+                if resp.status_code in (200, 201):
+                    return True, "Connected successfully"
+                return False, f"HTTP {resp.status_code}"
             return False, f"HTTP {resp.status_code}"
         except SFClientError as exc:
             return False, str(exc)

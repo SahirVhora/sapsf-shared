@@ -105,10 +105,12 @@ class SFApp(Flask):
     def _register_health(self) -> None:
         @self.route("/api/health")
         def health() -> Any:
-            return jsonify({
-                "status": "ok",
-                "service": self.name,
-            })
+            return jsonify(
+                {
+                    "status": "ok",
+                    "service": self.name,
+                }
+            )
 
     # ------------------------------------------------------------------
     # Error handlers
@@ -142,8 +144,12 @@ class SFApp(Flask):
             origin = request.headers.get("Origin")
             if origin:
                 response.headers["Access-Control-Allow-Origin"] = origin
-                response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, PATCH, DELETE, OPTIONS"
-                response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, X-CSRF-Token"
+                response.headers["Access-Control-Allow-Methods"] = (
+                    "GET, POST, PUT, PATCH, DELETE, OPTIONS"
+                )
+                response.headers["Access-Control-Allow-Headers"] = (
+                    "Content-Type, Authorization, X-CSRF-Token"
+                )
                 response.headers["Access-Control-Allow-Credentials"] = "true"
             return response
 

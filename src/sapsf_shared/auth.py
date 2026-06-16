@@ -62,12 +62,9 @@ class CredentialStore:
         self._use_keyring = _detect_keyring(service)
         if not self._use_keyring:
             logger.warning(
-                "No keyring backend available; using local fallback file "
-                "(chmod 600 applied)."
+                "No keyring backend available; using local fallback file " "(chmod 600 applied)."
             )
-        self._fallback = fallback_path or (
-            Path(__file__).parent.parent.parent / ".secrets.json"
-        )
+        self._fallback = fallback_path or (Path(__file__).parent.parent.parent / ".secrets.json")
 
     # ------------------------------------------------------------------
     # Internal file helpers
@@ -133,6 +130,7 @@ class CredentialStore:
 
 # ── OAuth bearer auth ─────────────────────────────────────────────────────
 
+
 class _BearerAuth(AuthBase):
     """Attaches an OAuth 2.0 Bearer token to every request."""
 
@@ -145,6 +143,7 @@ class _BearerAuth(AuthBase):
 
 
 # ── Auth config dataclass ─────────────────────────────────────────────────
+
 
 @dataclass
 class AuthConfig:
@@ -199,13 +198,9 @@ class AuthConfig:
 
         elif self.auth_type == "certificate":
             if not self.cert_path or not Path(self.cert_path).is_file():
-                raise AuthError(
-                    f"cert_path does not exist: {self.cert_path}"
-                )
+                raise AuthError(f"cert_path does not exist: {self.cert_path}")
             if not self.key_path or not Path(self.key_path).is_file():
-                raise AuthError(
-                    f"key_path does not exist: {self.key_path}"
-                )
+                raise AuthError(f"key_path does not exist: {self.key_path}")
         else:
             raise AuthError(
                 f"Unknown auth_type '{self.auth_type}'. "
@@ -242,6 +237,7 @@ class AuthConfig:
 
 # ── Auth builder classes ──────────────────────────────────────────────────
 
+
 class BasicAuth:
     """Builds an HTTPBasicAuth instance + headers from an AuthConfig."""
 
@@ -272,9 +268,7 @@ class OAuth2Auth:
             }
         ).encode()
 
-        req = urllib.request.Request(
-            config.token_url, data=payload, method="POST"
-        )
+        req = urllib.request.Request(config.token_url, data=payload, method="POST")
         req.add_header("Content-Type", "application/x-www-form-urlencoded")
 
         try:
@@ -316,6 +310,7 @@ class CertificateAuth:
 
 # ── Unified auth builder ──────────────────────────────────────────────────
 
+
 def build_requests_auth(config: AuthConfig) -> tuple[Any, Any]:
     """Return (auth_object, cert_tuple) compatible with requests.Session.
 
@@ -352,6 +347,4 @@ def build_auth_headers(config: AuthConfig) -> dict[str, str]:
         return {"Authorization": f"Bearer {token}"}
 
     else:
-        raise AuthError(
-            f"build_auth_headers does not support auth_type={config.auth_type}"
-        )
+        raise AuthError(f"build_auth_headers does not support auth_type={config.auth_type}")

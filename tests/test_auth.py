@@ -68,9 +68,7 @@ class TestAuthConfig:
         assert "username" in str(exc.value)
 
     def test_basic_missing_password_raises(self):
-        cfg = AuthConfig(
-            base_url="https://api.example.com", username="u", auth_type="basic"
-        )
+        cfg = AuthConfig(base_url="https://api.example.com", username="u", auth_type="basic")
         with pytest.raises(AuthError) as exc:
             cfg.validate()
         assert "password" in str(exc.value)
@@ -107,9 +105,7 @@ class TestAuthConfig:
         assert "cert_path" in str(exc.value)
 
     def test_unknown_auth_type_raises(self):
-        cfg = AuthConfig(
-            base_url="https://api.example.com", auth_type="unknown"
-        )
+        cfg = AuthConfig(base_url="https://api.example.com", auth_type="unknown")
         with pytest.raises(AuthError) as exc:
             cfg.validate()
         assert "Unknown auth_type" in str(exc.value)
@@ -170,9 +166,7 @@ class TestOAuth2Auth:
     @patch("sapsf_shared.auth.urllib.request.urlopen")
     def test_fetch_token_success(self, mock_urlopen):
         resp = MagicMock()
-        resp.read.return_value = json.dumps(
-            {"access_token": "tok123"}
-        ).encode()
+        resp.read.return_value = json.dumps({"access_token": "tok123"}).encode()
         mock_urlopen.return_value.__enter__ = lambda s: s
         mock_urlopen.return_value.__exit__ = lambda *a: None
         mock_urlopen.return_value.read = resp.read
@@ -211,9 +205,7 @@ class TestOAuth2Auth:
     @patch("sapsf_shared.auth.urllib.request.urlopen")
     def test_build_returns_bearer_auth(self, mock_urlopen):
         resp = MagicMock()
-        resp.read.return_value = json.dumps(
-            {"access_token": "tok123"}
-        ).encode()
+        resp.read.return_value = json.dumps({"access_token": "tok123"}).encode()
         mock_urlopen.return_value.__enter__ = lambda s: s
         mock_urlopen.return_value.__exit__ = lambda *a: None
         mock_urlopen.return_value.read = resp.read
@@ -261,9 +253,7 @@ class TestBuildRequestsAuth:
     def test_oauth2(self):
         with patch("sapsf_shared.auth.urllib.request.urlopen") as mock_urlopen:
             resp = MagicMock()
-            resp.read.return_value = json.dumps(
-                {"access_token": "tok123"}
-            ).encode()
+            resp.read.return_value = json.dumps({"access_token": "tok123"}).encode()
             mock_urlopen.return_value.__enter__ = lambda s: s
             mock_urlopen.return_value.__exit__ = lambda *a: None
             mock_urlopen.return_value.read = resp.read
@@ -296,9 +286,7 @@ class TestBuildRequestsAuth:
         assert cert_tuple == (str(cert), str(key))
 
     def test_unknown_raises(self):
-        cfg = AuthConfig(
-            base_url="https://api.example.com", auth_type="unknown"
-        )
+        cfg = AuthConfig(base_url="https://api.example.com", auth_type="unknown")
         with pytest.raises(AuthError):
             build_requests_auth(cfg)
 
@@ -330,9 +318,7 @@ class TestBuildAuthHeaders:
     @patch("sapsf_shared.auth.urllib.request.urlopen")
     def test_oauth2(self, mock_urlopen):
         resp = MagicMock()
-        resp.read.return_value = json.dumps(
-            {"access_token": "tok123"}
-        ).encode()
+        resp.read.return_value = json.dumps({"access_token": "tok123"}).encode()
         mock_urlopen.return_value.__enter__ = lambda s: s
         mock_urlopen.return_value.__exit__ = lambda *a: None
         mock_urlopen.return_value.read = resp.read

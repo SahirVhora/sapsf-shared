@@ -27,10 +27,12 @@ _ENV_RE = re.compile(r"\$\{(\w+)\}")
 def _resolve_env_vars(value: Any) -> Any:
     """Recursively replace ${VAR_NAME} with os.environ values."""
     if isinstance(value, str):
+
         def _replacer(m: re.Match[str]) -> str:
             var_name = m.group(1)
             env_val = os.environ.get(var_name, "")
             return env_val
+
         return _ENV_RE.sub(_replacer, value)
     if isinstance(value, dict):
         return {k: _resolve_env_vars(v) for k, v in value.items()}
@@ -77,6 +79,7 @@ def load_config(path: str | Path) -> dict[str, Any]:
 
 
 # ── Typed dataclass for common SF tool config ───────────────────────────
+
 
 @dataclass
 class SFEnvConfig:
@@ -131,7 +134,7 @@ class SFEnvConfig:
             raise SFConfigError("base_url is required (set SF_BASE_URL)")
         if not self.base_url.startswith(("https://", "http://")):
             raise SFConfigError(
-                f"base_url must start with https:// or http:// — got: {self.base_url}"
+                f"base_url must start with https:// or http:// - got: {self.base_url}"
             )
 
     def to_auth_config(self) -> AuthConfig:

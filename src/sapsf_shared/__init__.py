@@ -1,4 +1,4 @@
-"""sapsf-shared — Shared Python SDK for SAP SuccessFactors tools."""
+"""sapsf-shared - Shared Python SDK for SAP SuccessFactors tools."""
 
 from sapsf_shared.auth import (
     AuthConfig,
@@ -14,6 +14,13 @@ from sapsf_shared.client import SFClient
 from sapsf_shared.config import SFEnvConfig, load_config, load_yaml
 from sapsf_shared.exceptions import SFClientError, SFConfigError, SFError
 from sapsf_shared.logging_config import setup_logging
+from sapsf_shared.permissions import (
+    PermissionAnalyzer,
+    PermissionCatalogue,
+    PermissionRole,
+    PermissionScanReport,
+    UserRoleAssignment,
+)
 from sapsf_shared.utils import (
     build_odata_filter,
     flatten_record,
@@ -29,11 +36,16 @@ __all__ = [
     "CertificateAuth",
     "CredentialStore",
     "OAuth2Auth",
+    "PermissionAnalyzer",
+    "PermissionCatalogue",
+    "PermissionRole",
+    "PermissionScanReport",
     "SFClient",
     "SFEnvConfig",
     "SFClientError",
     "SFConfigError",
     "SFError",
+    "UserRoleAssignment",
     "build_auth_headers",
     "build_odata_filter",
     "build_requests_auth",
