@@ -390,7 +390,7 @@ class TestPermissionAnalyzer:
         analyzer = self._make_analyzer(client)
         # 150 roles should trigger 2 batches
         role_ids = [str(i) for i in range(150)]
-        result = analyzer.get_roles_permissions(role_ids)
+        _ = analyzer.get_roles_permissions(role_ids)  # result unused - checking call_count
         assert client._request_with_retry.call_count >= 2
 
     def test_get_roles_permissions_empty_list(self):
