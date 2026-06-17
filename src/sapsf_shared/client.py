@@ -383,7 +383,8 @@ class SFClient:
                 return f"[{code}]"[:200]
             # Plain text body (no XML structure)
             return re.sub(r"\s+", " ", raw).strip()[:200]
-        except Exception:
+        except Exception as exc:
+            logger.warning("Failed to extract error body: %s", exc)
             return ""
 
     # ------------------------------------------------------------------

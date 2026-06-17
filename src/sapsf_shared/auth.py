@@ -39,7 +39,8 @@ def _detect_keyring(service: str) -> bool:
 
         _keyring.get_password(service, "__probe__")
         return True
-    except Exception:
+    except Exception as exc:
+        logger.debug("Keyring unavailable: %s", exc)
         return False
 
 
@@ -74,7 +75,8 @@ class CredentialStore:
         if self._fallback.exists():
             try:
                 return json.loads(self._fallback.read_text())
-            except Exception:
+            except Exception as exc:
+                logger.warning("Failed to load secrets file %s: %s", self._fallback, exc)
                 return {}
         return {}
 
