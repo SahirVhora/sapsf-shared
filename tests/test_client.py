@@ -263,10 +263,49 @@ class TestTestConnection:
     @patch("sapsf_shared.client.requests.Session.request")
     def test_failure(self, mock_request, auth_config):
         mock_request.return_value.status_code = 500
+        mock_request.return_value.text = ""
         client = SFClient(auth_config)
         ok, msg = client.test_connection()
         assert ok is False
         assert "HTTP 500" in msg
+
+    @patch("sapsf_shared.client.requests.Session.request")
+    def test_failure_includes_sf_error_body(self, mock_request, auth_config):
+        """SF returns XML like <error><message>[LGN0015] auth failed</message></error>.
+        The message should be surfaced, not swallowed."""
+        mock_request.return_value.status_code = 401
+        mock_request.return_value.text = (
+            '<error xmlns="http://schemas.microsoft.com/ado/2007/08/dataservices/metadata">'
+            "<code>LGN0015</code>"
+            "<message xml:lang=\"en\">Authentication failed. You have entered an incorrect username or password.</message>"
+            "</error>"
+        )
+        client = SFClient(auth_config)
+        ok, msg = client.test_connection()
+        assert ok is False
+        assert "HTTP 401" in msg
+        assert "LGN0015" in msg
+        assert "Authentication failed" in msg
+
+    @patch("sapsf_shared.client.requests.Session.request")
+    def test_failure_plain_text_body(self, mock_request, auth_config):
+        mock_request.return_value.status_code = 502
+        mock_request.return_value.text = "Bad Gateway"
+        client = SFClient(auth_config)
+        ok, msg = client.test_connection()
+        assert ok is False
+        assert "HTTP 502" in msg
+        assert "Bad Gateway" in msg
+
+    @patch("sapsf_shared.client.requests.Session.request")
+    def test_failure_truncates_long_body(self, mock_request, auth_config):
+        mock_request.return_value.status_code = 500
+        mock_request.return_value.text = "x" * 5000
+        client = SFClient(auth_config)
+        ok, msg = client.test_connection()
+        assert ok is False
+        assert "HTTP 500" in msg
+        assert len(msg) < 260  # 240 char combined + "HTTP 500 - " prefix
 
 
 class TestContextManager:

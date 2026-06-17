@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import time
 from typing import Any
 
@@ -321,7 +322,12 @@ class SFClient:
         return True, records[0]
 
     def test_connection(self) -> tuple[bool, str]:
-        """Quick connectivity check. Returns (ok, message)."""
+        """Quick connectivity check. Returns (ok, message).
+
+        On failure, includes the SF error body so the user can see WHY
+        (e.g. "[LGN0015]Authentication failed" vs "Connection refused").
+        Body is trimmed to 200 chars to keep the message UI-friendly.
+        """
         try:
             # Use User/$count - returns a simple JSON number, avoids
             # Accept header issues with the XML-only $metadata endpoint
@@ -335,12 +341,50 @@ class SFClient:
                 resp = self._request_with_retry("GET", url)
                 if resp.status_code in (200, 201):
                     return True, "Connected successfully"
-                return False, f"HTTP {resp.status_code}"
+            body = self._extract_error_body(resp)
+            if body:
+                return False, f"HTTP {resp.status_code} - {body}"
             return False, f"HTTP {resp.status_code}"
         except SFClientError as exc:
             return False, str(exc)
         except Exception as exc:
             return False, f"Connection error: {exc}"
+
+    @staticmethod
+    def _extract_error_body(resp) -> str:
+        """Pull a short, UI-friendly error message out of a failed response.
+
+        SuccessFactors returns XML like:
+          <error xmlns="http://schemas.microsoft.com/ado/2007/08/dataservices/metadata">
+            <code>LGN0015</code>
+            <message xml:lang="en">Authentication failed...</message>
+          </error>
+        We want "[CODE] message" so the user can both identify the error
+        (LGN0015) and read the human explanation. For non-XML bodies,
+        fall back to the raw text.
+        """
+        try:
+            raw = (resp.text or "").strip()
+            if not raw:
+                return ""
+            code = ""
+            message = ""
+            code_m = re.search(r"<code[^>]*>(.*?)</code>", raw, re.S | re.I)
+            if code_m:
+                code = code_m.group(1).strip()
+            msg_m = re.search(r"<message[^>]*>(.*?)</message>", raw, re.S | re.I)
+            if msg_m:
+                message = re.sub(r"\s+", " ", msg_m.group(1)).strip()
+            if code and message:
+                return f"[{code}] {message}"[:240]
+            if message:
+                return message[:200]
+            if code:
+                return f"[{code}]"[:200]
+            # Plain text body (no XML structure)
+            return re.sub(r"\s+", " ", raw).strip()[:200]
+        except Exception:
+            return ""
 
     # ------------------------------------------------------------------
     # Lifecycle
