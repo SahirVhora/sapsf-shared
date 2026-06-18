@@ -188,6 +188,13 @@ def _parse_role_permissions_xml(xml_text: str) -> dict[str, list[str]]:
     return result
 
 
+# Compiled regex patterns for fallback parsers
+_ROLE_NAME_RE = re.compile(r"<roleName[^>]*>(.*?)</roleName>")
+_PERMISSION_RE = re.compile(r"<permission[^>]*>(.*?)</permission>")
+_USER_NAME_RE = re.compile(r"<userName[^>]*>(.*?)</userName>")
+_ROLE_RE = re.compile(r"<role[^>]*>(.*?)</role>")
+
+
 def _parse_role_permissions_regex(xml_text: str) -> dict[str, list[str]]:
     """Fallback parser using regex for malformed XML."""
     result: dict[str, list[str]] = {}
@@ -195,13 +202,13 @@ def _parse_role_permissions_regex(xml_text: str) -> dict[str, list[str]]:
 
     # Simple state machine over lines
     for line in xml_text.split("\n"):
-        role_name_m = re.search(r"<roleName[^>]*>(.*?)</roleName>", line)
+        role_name_m = _ROLE_NAME_RE.search(line)
         if role_name_m:
             current_role = role_name_m.group(1).strip()
             if current_role:
                 result.setdefault(current_role, [])
             continue
-        perm_m = re.search(r"<permission[^>]*>(.*?)</permission>", line)
+        perm_m = _PERMISSION_RE.search(line)
         if perm_m and current_role:
             result[current_role].append(perm_m.group(1).strip())
 
@@ -256,12 +263,12 @@ def _parse_user_roles_regex(xml_text: str) -> dict[str, list[str]]:
     current_user: str | None = None
 
     for line in xml_text.split("\n"):
-        user_m = re.search(r"<userName[^>]*>(.*?)</userName>", line)
+        user_m = _USER_NAME_RE.search(line)
         if user_m:
             current_user = user_m.group(1).strip()
             result.setdefault(current_user, [])
             continue
-        role_m = re.search(r"<role[^>]*>(.*?)</role>", line)
+        role_m = _ROLE_RE.search(line)
         if role_m and current_user:
             result[current_user].append(role_m.group(1).strip())
 
