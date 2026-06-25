@@ -82,13 +82,10 @@ class CredentialStore:
         return {}
 
     def _file_save(self, data: dict[str, str]) -> None:
-        tmp = Path(str(self._fallback) + ".tmp")
-        tmp.write_text(json.dumps(data, indent=2))
-        os.replace(tmp, self._fallback)
-        try:
-            os.chmod(self._fallback, 0o600)
-        except OSError as exc:
-            logger.warning("chmod 600 on %s failed: %s", self._fallback, exc)
+        # Write directly with mode 0o600 to avoid a chmod-after-write race window.
+        fd = os.open(str(self._fallback), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w") as f:
+            json.dump(data, f, indent=2)
 
     # ------------------------------------------------------------------
     # Public API
