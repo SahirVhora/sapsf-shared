@@ -23,12 +23,12 @@ from __future__ import annotations
 
 import logging
 import re
+from dataclasses import dataclass, field
+from typing import Any
 
 # defusedxml hardens against entity-expansion (billion-laughs) and external
 # entity attacks on untrusted SF API XML. Only fromstring/ParseError are used.
 import defusedxml.ElementTree as ET
-from dataclasses import dataclass, field
-from typing import Any
 
 from sapsf_shared.client import SFClient
 from sapsf_shared.exceptions import SFClientError
