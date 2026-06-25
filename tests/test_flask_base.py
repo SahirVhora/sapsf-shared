@@ -20,11 +20,17 @@ class TestSFApp:
             assert data["status"] == "ok"
             assert data["service"] == "test_app"
 
-    def test_cors_headers_on_health(self):
-        app = create_app("test_app")
+    def test_cors_allows_allowlisted_origin(self):
+        app = create_app("test_app", cors_origins=["http://localhost"])
         with app.test_client() as client:
             resp = client.get("/api/health", headers={"Origin": "http://localhost"})
             assert resp.headers.get("Access-Control-Allow-Origin") == "http://localhost"
+
+    def test_cors_rejects_unlisted_origin(self):
+        app = create_app("test_app", cors_origins=["http://localhost"])
+        with app.test_client() as client:
+            resp = client.get("/api/health", headers={"Origin": "http://evil.example"})
+            assert resp.headers.get("Access-Control-Allow-Origin") is None
 
     def test_options_handler(self):
         app = create_app("test_app")

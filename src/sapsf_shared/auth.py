@@ -16,6 +16,7 @@ import contextlib
 import json
 import logging
 import os
+import time
 import urllib.parse
 import urllib.request
 from dataclasses import dataclass, field
@@ -256,11 +257,31 @@ class BasicAuth:
 
 
 class OAuth2Auth:
-    """Fetches an OAuth 2.0 access token via client-credentials grant."""
+    """Fetches an OAuth 2.0 access token via client-credentials grant.
+
+    Tokens are cached per (token_url, client_id, company_id) until shortly
+    before they expire, so re-creating a client does not hit the token
+    endpoint on every call.
+    """
+
+    # cache_key -> (access_token, expiry_monotonic)
+    _token_cache: dict[tuple[str, str, str], tuple[str, float]] = {}
+    # Refresh this many seconds before the reported expiry.
+    _EXPIRY_SKEW_SEC = 60
 
     @staticmethod
-    def fetch_token(config: AuthConfig) -> str:
+    def fetch_token(config: AuthConfig, *, force_refresh: bool = False) -> str:
         config.validate()
+        cache_key = (
+            config.token_url or "",
+            config.client_id or "",
+            config.company_id or "",
+        )
+        if not force_refresh:
+            cached = OAuth2Auth._token_cache.get(cache_key)
+            if cached and cached[1] > time.monotonic():
+                logger.debug("OAuth token served from cache for %s", config.token_url)
+                return cached[0]
         payload = urllib.parse.urlencode(
             {
                 "grant_type": "client_credentials",
@@ -291,6 +312,13 @@ class OAuth2Auth:
                 "OAuth response missing access_token",
                 details=str(data)[:500],
             )
+        try:
+            expires_in = int(data.get("expires_in", 0))
+        except (TypeError, ValueError):
+            expires_in = 0
+        if expires_in > OAuth2Auth._EXPIRY_SKEW_SEC:
+            expiry = time.monotonic() + expires_in - OAuth2Auth._EXPIRY_SKEW_SEC
+            OAuth2Auth._token_cache[cache_key] = (token, expiry)
         logger.debug("OAuth token obtained from %s", config.token_url)
         return token
 

@@ -42,6 +42,7 @@ class SFApp(Flask):
         log_dir: Path | str | None = None,
         log_level: int | str = logging.INFO,
         enable_csrf: bool = True,
+        cors_origins: list[str] | None = None,
         **kwargs: Any,
     ) -> None:
         super().__init__(
@@ -72,6 +73,20 @@ class SFApp(Flask):
             file_handler.setLevel(log_level)
             self.logger.addHandler(file_handler)
 
+        # CORS allowlist. Reflecting an arbitrary Origin with credentials lets
+        # any site make credentialed cross-origin calls, so we only echo
+        # Origins on an explicit allowlist. Source order: constructor arg,
+        # then CORS_ALLOWED_ORIGINS env (comma-separated), else localhost only.
+        if cors_origins is None:
+            env_origins = os.environ.get("CORS_ALLOWED_ORIGINS", "")
+            cors_origins = [o.strip() for o in env_origins.split(",") if o.strip()]
+        if not cors_origins:
+            cors_origins = [
+                "http://localhost:5000",
+                "http://127.0.0.1:5000",
+            ]
+        self._cors_origins = set(cors_origins)
+
         # CSRF
         self._enable_csrf = enable_csrf
         if enable_csrf:
@@ -94,9 +109,15 @@ class SFApp(Flask):
 
     def _check_csrf(self) -> None:
         if request.method == "POST":
-            # API endpoints are JSON-only and same-origin; skip CSRF for them
-            # so the AJAX flow on the Settings page can save + test in one click.
+            # JSON APIs: instead of skipping CSRF outright, require the request
+            # to be application/json. A cross-site HTML form cannot send that
+            # content type without a CORS preflight (blocked by our Origin
+            # allowlist), so this stops classic form-based CSRF while keeping
+            # the AJAX save+test flow working.
             if request.path.startswith("/api/"):
+                ctype = (request.content_type or "").split(";")[0].strip().lower()
+                if ctype != "application/json":
+                    abort(415, "API requests must be application/json")
                 return
             token = request.form.get("csrf_token") or request.headers.get("X-CSRF-Token")
             if not token or token != session.get("csrf_token"):
@@ -129,6 +150,10 @@ class SFApp(Flask):
         def not_found(exc: Exception) -> Any:
             return jsonify({"error": "Not found"}), 404
 
+        @self.errorhandler(415)
+        def unsupported_media_type(exc: Exception) -> Any:
+            return jsonify({"error": str(exc)}), 415
+
         @self.errorhandler(403)
         def forbidden(exc: Exception) -> Any:
             return jsonify({"error": str(exc)}), 403
@@ -146,8 +171,9 @@ class SFApp(Flask):
         @self.after_request
         def add_cors_headers(response: Any) -> Any:
             origin = request.headers.get("Origin")
-            if origin:
+            if origin and origin in self._cors_origins:
                 response.headers["Access-Control-Allow-Origin"] = origin
+                response.headers["Vary"] = "Origin"
                 response.headers["Access-Control-Allow-Methods"] = (
                     "GET, POST, PUT, PATCH, DELETE, OPTIONS"
                 )
@@ -171,6 +197,7 @@ def create_app(
     log_dir: Path | str | None = None,
     log_level: int | str = logging.INFO,
     enable_csrf: bool = True,
+    cors_origins: list[str] | None = None,
     **kwargs: Any,
 ) -> SFApp:
     """Factory function for creating a pre-configured SFApp.
@@ -181,6 +208,8 @@ def create_app(
         log_dir: Directory for rotating file logs
         log_level: Logging level
         enable_csrf: Enable CSRF token validation on POST requests
+        cors_origins: Explicit CORS allowlist. Defaults to localhost only.
+            Override via CORS_ALLOWED_ORIGINS env (comma-separated).
         **kwargs: Passed to Flask constructor
 
     Returns:
@@ -192,5 +221,6 @@ def create_app(
         log_dir=log_dir,
         log_level=log_level,
         enable_csrf=enable_csrf,
+        cors_origins=cors_origins,
         **kwargs,
     )

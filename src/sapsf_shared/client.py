@@ -302,7 +302,7 @@ class SFClient:
         key: str,
     ) -> int:
         """DELETE a record by key. Returns HTTP status code."""
-        url = f"{self._url(entity_set)}('{key}')"
+        url = f"{self._url(entity_set)}('{odata_escape(key)}')"
         resp = self._request_with_retry("DELETE", url)
         return resp.status_code
 

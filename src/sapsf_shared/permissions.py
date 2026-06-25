@@ -23,7 +23,10 @@ from __future__ import annotations
 
 import logging
 import re
-import xml.etree.ElementTree as ET
+
+# defusedxml hardens against entity-expansion (billion-laughs) and external
+# entity attacks on untrusted SF API XML. Only fromstring/ParseError are used.
+import defusedxml.ElementTree as ET
 from dataclasses import dataclass, field
 from typing import Any
 

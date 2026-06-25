@@ -23,6 +23,7 @@ dependencies = [
     "requests>=2.31",
     "pyyaml>=6.0",
     "rich>=13.0",
+    "defusedxml>=0.7",
 ]
 
 [project.urls]
