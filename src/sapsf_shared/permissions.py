@@ -483,9 +483,7 @@ class PermissionAnalyzer:
 
         return result
 
-    def get_user_roles_report(
-        self, user_ids: list[str]
-    ) -> dict[str, list[str]]:
+    def get_user_roles_report(self, user_ids: list[str]) -> dict[str, list[str]]:
         """Fetch role assignments for up to 100 users.
 
         Returns dict of username → list of role names.
@@ -524,6 +522,7 @@ class PermissionAnalyzer:
             # Try parsing as JSON (SF returns JSON for this endpoint)
             try:
                 import json as _json
+
                 data = _json.loads(raw)
                 results = data.get("d", {}).get("results", [])
                 if not results and "d" in data:
@@ -535,17 +534,12 @@ class PermissionAnalyzer:
             except (ValueError, TypeError):
                 # Fallback: parse XML
                 roles = _parse_user_roles_xml(raw)
-                return [
-                    {"roleName": r, "roleId": r}
-                    for r in roles.get(user_id, [])
-                ]
+                return [{"roleName": r, "roleId": r} for r in roles.get(user_id, [])]
         except SFClientError as exc:
             logger.warning("Failed to get roles for user %s: %s", user_id, exc)
             return []
 
-    def get_users_permissions(
-        self, user_ids: list[str]
-    ) -> dict[str, list[str]]:
+    def get_users_permissions(self, user_ids: list[str]) -> dict[str, list[str]]:
         """Fetch effective permissions for up to 100 users.
 
         Returns dict of username → list of permission codes.
@@ -580,14 +574,13 @@ class PermissionAnalyzer:
             )
             try:
                 import json as _json
+
                 data = _json.loads(raw)
                 return data.get("d", {}).get("results", [])
             except (ValueError, TypeError):
                 return []
         except SFClientError as exc:
-            logger.warning(
-                "Failed to get users for group %s: %s", group_id, exc
-            )
+            logger.warning("Failed to get users for group %s: %s", group_id, exc)
             return []
 
     def check_user_permission(
@@ -667,7 +660,11 @@ class PermissionAnalyzer:
 
         # Step 2: Get role assignments for all users
         logger.info("Step 2/5: Fetching role assignments...")
-        user_ids = [u.get("userId", u.get("username", "")) for u in users_raw if u.get("userId") or u.get("username")]
+        user_ids = [
+            u.get("userId", u.get("username", ""))
+            for u in users_raw
+            if u.get("userId") or u.get("username")
+        ]
 
         user_role_map: dict[str, list[str]] = {}
         if user_ids:
@@ -678,8 +675,7 @@ class PermissionAnalyzer:
 
         # Check for RBP access denial early
         rbp_blocked = any(
-            "403" in e or "RBP" in e or "Access denied" in e or "administrator" in e
-            for e in errors
+            "403" in e or "RBP" in e or "Access denied" in e or "administrator" in e for e in errors
         )
         if not rbp_blocked and user_ids and not user_role_map:
             # try getPermissionMetadata as a probe — if it fails we know RBP is blocked
@@ -766,9 +762,7 @@ class PermissionAnalyzer:
         for u in users_raw:
             uid = u.get("userId", u.get("username", ""))
             username = u.get("username", "")
-            full_name = (
-                f"{u.get('firstName', '')} {u.get('lastName', '')}".strip()
-            )
+            full_name = f"{u.get('firstName', '')} {u.get('lastName', '')}".strip()
             assigned_roles = user_role_map.get(uid, []) or user_role_map.get(username, [])
             status = u.get("status", "active")
             users.append(
@@ -838,27 +832,31 @@ class PermissionAnalyzer:
 
             # Check for dangerous combinations
             for combo in _HIGH_RISK_COMBOS:
-                matched = [c for c in combo if any(c.lower() in rp.lower() for rp in role.permissions)]
+                matched = [
+                    c for c in combo if any(c.lower() in rp.lower() for rp in role.permissions)
+                ]
                 if len(matched) >= 2:
-                    flags.append((
-                        role.role_name,
-                        f"Dangerous combo: {', '.join(_SENSITIVE_PERMISSIONS.get(m, m) for m in matched)}",
-                        matched,
-                    ))
+                    flags.append(
+                        (
+                            role.role_name,
+                            f"Dangerous combo: {', '.join(_SENSITIVE_PERMISSIONS.get(m, m) for m in matched)}",
+                            matched,
+                        )
+                    )
 
             # Flag roles with many sensitive permissions
             if len(sensitive_found) >= 3:
-                flags.append((
-                    role.role_name,
-                    f"Over-privileged: {len(sensitive_found)} sensitive permissions granted",
-                    sensitive_found,
-                ))
+                flags.append(
+                    (
+                        role.role_name,
+                        f"Over-privileged: {len(sensitive_found)} sensitive permissions granted",
+                        sensitive_found,
+                    )
+                )
 
         return flags
 
-    def build_permission_matrix(
-        self, report: PermissionScanReport
-    ) -> dict[str, Any]:
+    def build_permission_matrix(self, report: PermissionScanReport) -> dict[str, Any]:
         """Build a permission matrix for Excel/HTML export.
 
         Returns:
@@ -896,17 +894,18 @@ class PermissionAnalyzer:
 
         for role in report.roles:
             labeled_perms = [
-                {"code": p, "label": code_to_label.get(p, p)}
-                for p in role.permissions
+                {"code": p, "label": code_to_label.get(p, p)} for p in role.permissions
             ]
-            matrix["roles"].append({
-                "role_id": role.role_id,
-                "role_name": role.role_name,
-                "permission_count": len(role.permissions),
-                "user_count": role.user_count,
-                "is_empty": role.is_empty,
-                "permissions": labeled_perms,
-            })
+            matrix["roles"].append(
+                {
+                    "role_id": role.role_id,
+                    "role_name": role.role_name,
+                    "permission_count": len(role.permissions),
+                    "user_count": role.user_count,
+                    "is_empty": role.is_empty,
+                    "permissions": labeled_perms,
+                }
+            )
 
         # Get effective permissions for users (in batches)
         user_ids = [u.user_id for u in report.users if u.user_id]
@@ -918,28 +917,29 @@ class PermissionAnalyzer:
                 logger.warning("Could not fetch user effective permissions")
 
         for user in report.users:
-            effective_perms = users_perms_map.get(user.user_id, []) or users_perms_map.get(user.username, [])
+            effective_perms = users_perms_map.get(user.user_id, []) or users_perms_map.get(
+                user.username, []
+            )
             labeled_effective = [
-                {"code": p, "label": code_to_label.get(p, p)}
-                for p in effective_perms
+                {"code": p, "label": code_to_label.get(p, p)} for p in effective_perms
             ]
-            matrix["users"].append({
-                "user_id": user.user_id,
-                "username": user.username,
-                "full_name": user.full_name,
-                "status": user.status,
-                "role_ids": user.role_ids,
-                "role_names": user.role_names,
-                "is_inactive": user.is_inactive,
-                "effective_permissions": labeled_effective,
-                "effective_perm_count": len(effective_perms),
-            })
+            matrix["users"].append(
+                {
+                    "user_id": user.user_id,
+                    "username": user.username,
+                    "full_name": user.full_name,
+                    "status": user.status,
+                    "role_ids": user.role_ids,
+                    "role_names": user.role_names,
+                    "is_inactive": user.is_inactive,
+                    "effective_permissions": labeled_effective,
+                    "effective_perm_count": len(effective_perms),
+                }
+            )
 
         return matrix
 
-    def export_to_excel(
-        self, report: PermissionScanReport, output_path: str
-    ) -> None:
+    def export_to_excel(self, report: PermissionScanReport, output_path: str) -> None:
         """Export the scan report to an Excel workbook.
 
         Sheets:
@@ -955,8 +955,7 @@ class PermissionAnalyzer:
             from openpyxl.utils import get_column_letter
         except ImportError:
             raise ImportError(
-                "openpyxl is required for Excel export. Install with: "
-                "pip install openpyxl"
+                "openpyxl is required for Excel export. Install with: pip install openpyxl"
             ) from None
 
         wb = openpyxl.Workbook()
@@ -992,7 +991,9 @@ class PermissionAnalyzer:
         # ── Sheet 1: Summary ──
         ws_summary = wb.active
         ws_summary.title = "Summary"
-        ws_summary.cell(row=1, column=1, value="SF Permission Analyzer - Scan Report").font = Font(bold=True, size=14)
+        ws_summary.cell(row=1, column=1, value="SF Permission Analyzer - Scan Report").font = Font(
+            bold=True, size=14
+        )
         ws_summary.cell(row=2, column=1, value=f"Tenant: {report.tenant_url}")
         ws_summary.cell(row=4, column=1, value="Metric").font = header_font
         ws_summary.cell(row=4, column=2, value="Value").font = header_font
@@ -1016,13 +1017,20 @@ class PermissionAnalyzer:
 
         # ── Sheet 2: Roles ──
         ws_roles = wb.create_sheet("Roles")
-        _write_header(ws_roles, ["Role Name", "Role ID", "Permission Count", "User Count", "Permissions", "Is Empty"])
+        _write_header(
+            ws_roles,
+            ["Role Name", "Role ID", "Permission Count", "User Count", "Permissions", "Is Empty"],
+        )
         for row_idx, role in enumerate(report.roles, 2):
             ws_roles.cell(row=row_idx, column=1, value=role.role_name)
             ws_roles.cell(row=row_idx, column=2, value=role.role_id)
             ws_roles.cell(row=row_idx, column=3, value=len(role.permissions))
             ws_roles.cell(row=row_idx, column=4, value=role.user_count)
-            ws_roles.cell(row=row_idx, column=5, value=", ".join(role.permissions) if role.permissions else "(none)")
+            ws_roles.cell(
+                row=row_idx,
+                column=5,
+                value=", ".join(role.permissions) if role.permissions else "(none)",
+            )
             ws_roles.cell(row=row_idx, column=6, value="Yes" if role.is_empty else "No")
             if role.is_empty:
                 for c in range(1, 7):
@@ -1031,13 +1039,19 @@ class PermissionAnalyzer:
 
         # ── Sheet 3: Users ──
         ws_users = wb.create_sheet("Users")
-        _write_header(ws_users, ["User ID", "Username", "Full Name", "Status", "Roles", "Role Count"])
+        _write_header(
+            ws_users, ["User ID", "Username", "Full Name", "Status", "Roles", "Role Count"]
+        )
         for row_idx, user in enumerate(report.users, 2):
             ws_users.cell(row=row_idx, column=1, value=user.user_id)
             ws_users.cell(row=row_idx, column=2, value=user.username)
             ws_users.cell(row=row_idx, column=3, value=user.full_name)
             ws_users.cell(row=row_idx, column=4, value=user.status)
-            ws_users.cell(row=row_idx, column=5, value=", ".join(user.role_names) if user.role_names else "(none)")
+            ws_users.cell(
+                row=row_idx,
+                column=5,
+                value=", ".join(user.role_names) if user.role_names else "(none)",
+            )
             ws_users.cell(row=row_idx, column=6, value=len(user.role_names))
         _auto_width(ws_users)
 

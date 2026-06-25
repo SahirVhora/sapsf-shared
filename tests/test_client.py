@@ -277,7 +277,7 @@ class TestTestConnection:
         mock_request.return_value.text = (
             '<error xmlns="http://schemas.microsoft.com/ado/2007/08/dataservices/metadata">'
             "<code>LGN0015</code>"
-            "<message xml:lang=\"en\">Authentication failed. You have entered an incorrect username or password.</message>"
+            '<message xml:lang="en">Authentication failed. You have entered an incorrect username or password.</message>'
             "</error>"
         )
         client = SFClient(auth_config)

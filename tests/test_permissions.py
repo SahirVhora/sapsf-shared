@@ -450,9 +450,7 @@ class TestPermissionAnalyzer:
     def test_get_user_roles_by_user_id_no_roles(self):
         client = MagicMock()
         client.base_url = "https://api4.sapsf.com/odata/v2"
-        client._request_with_retry.return_value = _mock_response(
-            json.dumps({"d": {"results": []}})
-        )
+        client._request_with_retry.return_value = _mock_response(json.dumps({"d": {"results": []}}))
         analyzer = self._make_analyzer(client)
         result = analyzer.get_user_roles_by_user_id("nobody")
         assert result == []
@@ -524,8 +522,20 @@ class TestPermissionAnalyzer:
 
         # Mock User entity response
         client.get.return_value = [
-            {"username": "john", "userId": "john", "firstName": "John", "lastName": "Doe", "status": "active"},
-            {"username": "jane", "userId": "jane", "firstName": "Jane", "lastName": "Smith", "status": "active"},
+            {
+                "username": "john",
+                "userId": "john",
+                "firstName": "John",
+                "lastName": "Doe",
+                "status": "active",
+            },
+            {
+                "username": "jane",
+                "userId": "jane",
+                "firstName": "Jane",
+                "lastName": "Smith",
+                "status": "active",
+            },
         ]
 
         # Mock _request_with_retry for different RBP functions
@@ -596,6 +606,7 @@ class TestPermissionAnalyzer:
         client = MagicMock()
         client.base_url = "https://api4.sapsf.com/odata/v2"
         from sapsf_shared.exceptions import SFClientError
+
         client.get.side_effect = SFClientError(
             "Connection timeout", url="https://api4.sapsf.com/odata/v2/User"
         )
@@ -616,8 +627,20 @@ class TestPermissionAnalyzer:
         client.base_url = "https://api4.sapsf.com/odata/v2"
 
         client.get.return_value = [
-            {"username": "active1", "userId": "active1", "firstName": "Active", "lastName": "One", "status": "active"},
-            {"username": "inactive1", "userId": "inactive1", "firstName": "Inactive", "lastName": "One", "status": "inactive"},
+            {
+                "username": "active1",
+                "userId": "active1",
+                "firstName": "Active",
+                "lastName": "One",
+                "status": "active",
+            },
+            {
+                "username": "inactive1",
+                "userId": "inactive1",
+                "firstName": "Inactive",
+                "lastName": "One",
+                "status": "inactive",
+            },
         ]
 
         def mock_request(method, url, **kwargs):
@@ -655,7 +678,13 @@ class TestPermissionAnalyzer:
         client = MagicMock()
         client.base_url = "https://api4.sapsf.com/odata/v2"
         client.get.return_value = [
-            {"username": "admin", "userId": "admin", "firstName": "Admin", "lastName": "", "status": "active"},
+            {
+                "username": "admin",
+                "userId": "admin",
+                "firstName": "Admin",
+                "lastName": "",
+                "status": "active",
+            },
         ]
 
         def mock_request(method, url, **kwargs):
@@ -695,7 +724,13 @@ class TestPermissionAnalyzer:
         client = MagicMock()
         client.base_url = "https://api4.sapsf.com/odata/v2"
         client.get.return_value = [
-            {"username": "user1", "userId": "user1", "firstName": "User", "lastName": "1", "status": "active"},
+            {
+                "username": "user1",
+                "userId": "user1",
+                "firstName": "User",
+                "lastName": "1",
+                "status": "active",
+            },
         ]
 
         def mock_request(method, url, **kwargs):
@@ -784,18 +819,34 @@ class TestExcelExport:
 
         report = PermissionScanReport(
             roles=[
-                PermissionRole(role_id="101", role_name="Admin", permissions=["FULL_ACCESS"], user_count=2),
+                PermissionRole(
+                    role_id="101", role_name="Admin", permissions=["FULL_ACCESS"], user_count=2
+                ),
                 PermissionRole(role_id="102", role_name="Empty", permissions=[], is_empty=True),
             ],
             users=[
-                UserRoleAssignment(user_id="u1", username="user1", full_name="User One", status="active",
-                                   role_ids=["Admin"], role_names=["Admin"]),
-                UserRoleAssignment(user_id="u2", username="user2", full_name="User Two", status="active",
-                                   role_ids=["Empty"], role_names=["Empty"]),
+                UserRoleAssignment(
+                    user_id="u1",
+                    username="user1",
+                    full_name="User One",
+                    status="active",
+                    role_ids=["Admin"],
+                    role_names=["Admin"],
+                ),
+                UserRoleAssignment(
+                    user_id="u2",
+                    username="user2",
+                    full_name="User Two",
+                    status="active",
+                    role_ids=["Empty"],
+                    role_names=["Empty"],
+                ),
             ],
-            catalogue=PermissionCatalogue(categories={
-                "General": [{"code": "FULL_ACCESS", "label": "Full Access"}],
-            }),
+            catalogue=PermissionCatalogue(
+                categories={
+                    "General": [{"code": "FULL_ACCESS", "label": "Full Access"}],
+                }
+            ),
             tenant_url="https://api4.sapsf.com",
             total_roles=2,
             total_users=2,
@@ -816,6 +867,7 @@ class TestExcelExport:
 
             # Read back to verify sheets
             import openpyxl
+
             wb = openpyxl.load_workbook(tmp_path)
             sheet_names = wb.sheetnames
             assert "Summary" in sheet_names
@@ -870,7 +922,9 @@ class TestPermissionScanReport:
 
     def test_report_with_data(self):
         role = PermissionRole(role_id="1", role_name="Test Role", permissions=["P1"])
-        user = UserRoleAssignment(user_id="u1", username="test", full_name="Test User", status="active", role_ids=["1"])
+        user = UserRoleAssignment(
+            user_id="u1", username="test", full_name="Test User", status="active", role_ids=["1"]
+        )
         report = PermissionScanReport(
             roles=[role],
             users=[user],

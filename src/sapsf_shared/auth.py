@@ -64,7 +64,7 @@ class CredentialStore:
         self._use_keyring = _detect_keyring(service)
         if not self._use_keyring:
             logger.warning(
-                "No keyring backend available; using local fallback file " "(chmod 600 applied)."
+                "No keyring backend available; using local fallback file (chmod 600 applied)."
             )
         self._fallback = fallback_path or (Path(__file__).parent.parent.parent / ".secrets.json")
 
@@ -203,8 +203,7 @@ class AuthConfig:
                 raise AuthError(f"key_path does not exist: {self.key_path}")
         else:
             raise AuthError(
-                f"Unknown auth_type '{self.auth_type}'. "
-                "Must be one of: basic, oauth2, certificate"
+                f"Unknown auth_type '{self.auth_type}'. Must be one of: basic, oauth2, certificate"
             )
 
     # ── Persistence helpers (store / load via keyring/file) ────────────
