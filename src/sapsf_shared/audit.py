@@ -21,10 +21,11 @@ import json
 import logging
 import os as _os
 import time
-from datetime import datetime, timezone
+from collections.abc import Callable
+from datetime import UTC, datetime
 from functools import wraps
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 audit_logger = logging.getLogger("sapsf.audit")
 
@@ -63,7 +64,7 @@ def audit_log(
         "tool": tool,
         "action": action,
         "status": status,
-        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "timestamp": datetime.now(UTC).isoformat(),
     }
     if duration_ms is not None:
         event["duration_ms"] = round(duration_ms, 1)
@@ -76,9 +77,7 @@ def audit_log(
         with open(_AUDIT_LOG_PATH, "a") as f:
             f.write(json.dumps(event) + "\n")
     except OSError:
-        audit_logger.warning(
-            "Failed to write audit event (disk full or permission error)"
-        )
+        audit_logger.warning("Failed to write audit event (disk full or permission error)")
     audit_logger.debug("Audit: %s %s -> %s", tool, action, status)
 
 

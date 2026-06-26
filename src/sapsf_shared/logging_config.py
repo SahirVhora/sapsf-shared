@@ -20,7 +20,7 @@ from rich.logging import RichHandler
 # Patterns that look like credentials -- stripped before logging
 _CREDENTIAL_PATTERNS: list[tuple[re.Pattern[str], str]] = [
     (
-        re.compile(r"(?:password|passwd|pwd|secret|token|api_key|apikey)\s*[:=]\s*\S+", re.I),
+        re.compile(r"(password|passwd|pwd|secret|token|api_key|apikey)\s*[:=]\s*\S+", re.I),
         r"\1=[REDACTED]",
     ),
     (re.compile(r"Basic\s+[A-Za-z0-9+/=]{20,}"), "Basic [REDACTED]"),
