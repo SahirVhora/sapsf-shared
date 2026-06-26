@@ -2,16 +2,57 @@
 
 Provides a consistent, pretty log format (coloured in the console, plain in files)
 with sensible defaults. Tools call setup_logging() once at startup.
+
+Also includes a CredentialRedactionFilter that strips passwords and tokens
+from log messages before they hit handlers.
 """
 
 from __future__ import annotations
 
 import logging
+import re
 import sys
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
 from rich.logging import RichHandler
+
+# Patterns that look like credentials -- stripped before logging
+_CREDENTIAL_PATTERNS: list[tuple[re.Pattern[str], str]] = [
+    (
+        re.compile(r"(?:password|passwd|pwd|secret|token|api_key|apikey)\s*[:=]\s*\S+", re.I),
+        r"\1=[REDACTED]",
+    ),
+    (re.compile(r"Basic\s+[A-Za-z0-9+/=]{20,}"), "Basic [REDACTED]"),
+    (re.compile(r"Bearer\s+[A-Za-z0-9\-._~+/]{20,}"), "Bearer [REDACTED]"),
+]
+
+
+class CredentialRedactionFilter(logging.Filter):
+    """Log filter that strips credentials from log records.
+
+    Apply to any handler or logger:
+        logger.addFilter(CredentialRedactionFilter())
+    """
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        # Redact the formatted message
+        if isinstance(record.msg, str):
+            for pattern, replacement in _CREDENTIAL_PATTERNS:
+                record.msg = pattern.sub(replacement, record.msg)
+        # Redact any args that might contain credentials
+        if record.args:
+            redacted_args = []
+            for arg in record.args:
+                if isinstance(arg, str):
+                    s = arg
+                    for pattern, replacement in _CREDENTIAL_PATTERNS:
+                        s = pattern.sub(replacement, s)
+                    redacted_args.append(s)
+                else:
+                    redacted_args.append(arg)
+            record.args = tuple(redacted_args)
+        return True
 
 
 class ColoredFormatter(logging.Formatter):
@@ -41,6 +82,7 @@ def setup_logging(
     backup_count: int = 3,
     rich_console: bool = True,
     format_str: str | None = None,
+    enable_redaction: bool = True,
 ) -> None:
     """Configure root logging for an SAP SF tool.
 
@@ -52,6 +94,7 @@ def setup_logging(
         backup_count: Number of backup files to keep
         rich_console: Use RichHandler (pretty) instead of plain StreamHandler
         format_str: Override the default log format string
+        enable_redaction: Apply credential redaction filter (default: True)
     """
     if isinstance(level, str):
         level = getattr(logging, level.upper(), logging.INFO)
@@ -76,6 +119,8 @@ def setup_logging(
         console_handler = logging.StreamHandler(sys.stdout)
         console_handler.setFormatter(ColoredFormatter(fmt))
 
+    if enable_redaction:
+        console_handler.addFilter(CredentialRedactionFilter())
     handlers.append(console_handler)
 
     # File handler
@@ -89,6 +134,8 @@ def setup_logging(
             backupCount=backup_count,
         )
         file_handler.setFormatter(logging.Formatter(fmt))
+        if enable_redaction:
+            file_handler.addFilter(CredentialRedactionFilter())
         handlers.append(file_handler)
 
     logging.basicConfig(

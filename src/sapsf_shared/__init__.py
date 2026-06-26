@@ -1,5 +1,6 @@
 """sapsf-shared - Shared Python SDK for SAP SuccessFactors tools."""
 
+from sapsf_shared.audit import audit, audit_log
 from sapsf_shared.auth import (
     AuthConfig,
     AuthError,
@@ -13,7 +14,7 @@ from sapsf_shared.auth import (
 from sapsf_shared.client import SFClient
 from sapsf_shared.config import SFEnvConfig, load_config, load_yaml
 from sapsf_shared.exceptions import SFClientError, SFConfigError, SFError
-from sapsf_shared.logging_config import setup_logging
+from sapsf_shared.logging_config import CredentialRedactionFilter, setup_logging
 from sapsf_shared.permissions import (
     PermissionAnalyzer,
     PermissionCatalogue,
@@ -30,11 +31,14 @@ from sapsf_shared.utils import (
 )
 
 __all__ = [
+    "audit",
+    "audit_log",
     "AuthConfig",
     "AuthError",
     "BasicAuth",
     "CertificateAuth",
     "CredentialStore",
+    "CredentialRedactionFilter",
     "OAuth2Auth",
     "PermissionAnalyzer",
     "PermissionCatalogue",

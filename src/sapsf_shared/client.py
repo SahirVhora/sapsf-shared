@@ -14,9 +14,11 @@ import json
 import logging
 import re
 import time
+from collections.abc import Iterator
 from typing import Any
 
 import requests
+from requests.adapters import HTTPAdapter
 
 from sapsf_shared.auth import AuthConfig, build_requests_auth
 from sapsf_shared.exceptions import SFClientError
@@ -45,6 +47,8 @@ class SFClient:
         *,
         default_top: int = 100,
         json_indent: int | None = None,
+        pool_connections: int = 10,
+        pool_maxsize: int = 20,
     ) -> None:
         self.config = auth_config
         raw_url = auth_config.base_url.rstrip("/")
@@ -68,6 +72,15 @@ class SFClient:
                 "Content-Type": "application/json",
             }
         )
+
+        # Connection pooling for reuse across requests
+        adapter = HTTPAdapter(
+            pool_connections=pool_connections,
+            pool_maxsize=pool_maxsize,
+            max_retries=0,  # we handle retries ourselves
+        )
+        self._session.mount("https://", adapter)
+        self._session.mount("http://", adapter)
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -201,6 +214,68 @@ class SFClient:
             query.update(params)
 
         return self._paginate(url, query)
+
+    def get_iter(
+        self,
+        entity_set: str,
+        *,
+        top: int | None = None,
+        skip: int = 0,
+        select: list[str] | None = None,
+        expand: list[str] | None = None,
+        filter_expr: str | None = None,
+        orderby: str | None = None,
+        params: dict[str, str] | None = None,
+    ) -> Iterator[dict[str, Any]]:
+        """Yield records one at a time with constant memory.
+
+        Identical to get() but returns a generator instead of loading
+        all pages into a single list. Use this for large datasets
+        (500k+ records) to avoid O(n) memory.
+
+        Args:
+            entity_set: OData entity set name
+            top: Max records per page
+            skip: Initial $skip value
+            select: Fields to $select
+            expand: Navigation properties to $expand
+            filter_expr: OData $filter expression
+            orderby: OData $orderby expression
+            params: Any additional query parameters
+
+        Yields:
+            One record dict at a time.
+        """
+        url = self._url(entity_set)
+        query: dict[str, str] = {
+            "$format": "json",
+            "$top": str(top or self.default_top),
+            "$skip": str(skip),
+        }
+        if select:
+            query["$select"] = ",".join(select)
+        if expand:
+            query["$expand"] = ",".join(expand)
+        if filter_expr:
+            query["$filter"] = filter_expr
+        if orderby:
+            query["$orderby"] = orderby
+        if params:
+            query.update(params)
+
+        next_url: str | None = url
+        first_call = True
+        while next_url:
+            resp = self._request_with_retry(
+                "GET",
+                next_url,
+                params=query if first_call else None,
+            )
+            first_call = False
+            payload = self._check_response(resp, next_url or url)
+            data = payload.get("d", {})
+            yield from data.get("results", [])
+            next_url = data.get("__next")
 
     def get_entity_by_code(
         self,

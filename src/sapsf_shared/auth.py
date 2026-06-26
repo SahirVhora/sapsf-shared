@@ -66,11 +66,19 @@ class CredentialStore:
             logger.warning(
                 "No keyring backend available; using local fallback file (chmod 600 applied)."
             )
-        self._fallback = fallback_path or (Path(__file__).parent.parent.parent / ".secrets.json")
+        self._fallback = fallback_path or self._default_fallback_path()
 
     # ------------------------------------------------------------------
     # Internal file helpers
     # ------------------------------------------------------------------
+
+    @staticmethod
+    def _default_fallback_path() -> Path:
+        """XDG-compliant default location: ~/.config/sapsf/secrets.json."""
+        xdg = os.environ.get("XDG_CONFIG_HOME", str(Path.home() / ".config"))
+        path = Path(xdg) / "sapsf" / "secrets.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        return path
 
     def _file_load(self) -> dict[str, str]:
         if self._fallback.exists():
@@ -82,10 +90,27 @@ class CredentialStore:
         return {}
 
     def _file_save(self, data: dict[str, str]) -> None:
-        # Write directly with mode 0o600 to avoid a chmod-after-write race window.
-        fd = os.open(str(self._fallback), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-        with os.fdopen(fd, "w") as f:
-            json.dump(data, f, indent=2)
+        # Write atomically: temp file + os.replace avoids data loss on crash/disk-full.
+        import tempfile as _tempfile
+
+        try:
+            tmp_fd, tmp_path = _tempfile.mkstemp(
+                dir=str(self._fallback.parent),
+                prefix=".secrets.",
+                suffix=".tmp",
+            )
+            try:
+                with os.fdopen(tmp_fd, "w") as f:
+                    json.dump(data, f, indent=2)
+                os.chmod(tmp_path, 0o600)
+                os.replace(tmp_path, str(self._fallback))  # atomic on POSIX
+            except Exception:
+                # Clean up temp file on any write failure
+                with contextlib.suppress(OSError):
+                    os.unlink(tmp_path)
+                raise
+        except OSError as exc:
+            raise AuthError(f"Failed to write secrets file: {exc}") from exc
 
     # ------------------------------------------------------------------
     # Public API
