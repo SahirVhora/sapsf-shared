@@ -147,6 +147,30 @@ export SF_COMPANY_ID=companyId
 cfg = SFEnvConfig.from_env()
 ```
 
+### Standard tool environment variables
+
+Tools that connect to one tenant should use these shared variables:
+
+| Variable | Required | Description |
+|---|---|---|
+| `SF_BASE_URL` | Yes | Tenant API host or OData v2 URL |
+| `SF_AUTH_TYPE` | No | `basic` (default), `oauth2`, or `certificate` |
+| `SF_COMPANY_ID` | Basic/OAuth2 when usernames omit company suffix | SuccessFactors company ID |
+| `SF_USERNAME` | Basic only | API username |
+| `SF_PASSWORD` | Basic only | API password |
+| `SF_CLIENT_ID` | OAuth2 only | OAuth client ID |
+| `SF_CLIENT_SECRET` | OAuth2 only | OAuth client secret |
+| `SF_TOKEN_URL` | OAuth2 only | OAuth token endpoint |
+| `SF_CERT_PATH` | Certificate only | Client certificate path |
+| `SF_KEY_PATH` | Certificate only | Client private key path |
+
+Tools that compare source and target tenants should use the same names with
+`SF_SOURCE_` and `SF_TARGET_` prefixes, for example `SF_SOURCE_URL`,
+`SF_SOURCE_USERNAME`, `SF_SOURCE_PASSWORD`, `SF_TARGET_URL`,
+`SF_TARGET_USERNAME`, and `SF_TARGET_PASSWORD`. Legacy aliases such as
+`SF_SOURCE_USER` may be accepted during migration, but new code should prefer
+`USERNAME`.
+
 ### `CredentialStore`
 
 Keyring-backed secret storage with automatic fallback to a local `.secrets.json` file (chmod 600). Use `store.clear_alias(alias)` to delete all secrets for a tenant.
@@ -159,6 +183,28 @@ Keyring-backed secret storage with automatic fallback to a local `.secrets.json`
 | `is_active_today(record)` | Check effective dating + status |
 | `flatten_record(record)` | Flatten nested OData for CSV export |
 | `build_odata_filter(dict)` | Build `$filter` strings from dicts |
+
+### Tenant Snapshots
+
+The shared package includes an offline-first snapshot store used as the
+foundation for `sf snapshot` and future analyzer `--snapshot` support.
+
+```bash
+sf snapshot pull --tenant demo --from-dir ./demo-snapshot --only metadata,picklists,positions
+sf snapshot list --tenant demo
+sf snapshot diff <snapshot-a> <snapshot-b>
+```
+
+Current scope: `--from-dir` imports JSON files named `<collection>.json` into an
+immutable SQLite snapshot under `~/.sf-toolkit/snapshots/<tenant>/`. Snapshots
+are content-addressed, so importing unchanged content reuses the existing
+snapshot instead of creating another copy. Credential-like fields such as
+`password`, `token`, `secret`, and API keys are rejected before anything is
+written.
+
+Live tenant pulling is intentionally not wired in this layer yet; it should be
+added on top of `SFClient` with resumable progress once the first analyzer reads
+snapshots offline.
 
 ## Development
 
@@ -186,8 +232,8 @@ MIT
 | Tool | Status |
 |---|---|
 | sf-config-compare | Adopted - `parse_sf_date` via `sapsf_shared.utils` |
+| sf-object-sync | Adopted - OData client and filter escaping via `sapsf_shared.SFClient` |
 | sf-position-integrity-checker | Next - client/pagination migration pending tenant testing |
-| sf-object-sync | Planned |
 
 Depend on it from any tool:
 
