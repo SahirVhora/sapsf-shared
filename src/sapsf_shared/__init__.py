@@ -22,6 +22,12 @@ from sapsf_shared.permissions import (
     PermissionScanReport,
     UserRoleAssignment,
 )
+from sapsf_shared.snapshot import (
+    SnapshotDiff,
+    SnapshotRef,
+    SnapshotStore,
+    parse_only,
+)
 from sapsf_shared.utils import (
     build_odata_filter,
     flatten_record,
@@ -50,6 +56,9 @@ __all__ = [
     "SFClientError",
     "SFConfigError",
     "SFError",
+    "SnapshotDiff",
+    "SnapshotRef",
+    "SnapshotStore",
     "UserRoleAssignment",
     "build_auth_headers",
     "build_odata_filter",
@@ -60,5 +69,6 @@ __all__ = [
     "load_yaml",
     "odata_escape",
     "parse_sf_date",
+    "parse_only",
     "setup_logging",
 ]
