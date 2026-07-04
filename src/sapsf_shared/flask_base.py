@@ -120,7 +120,7 @@ class SFApp(Flask):
                     abort(415, "API requests must be application/json")
                 return
             token = request.form.get("csrf_token") or request.headers.get("X-CSRF-Token")
-            if not token or token != session.get("csrf_token"):
+            if not token or not secrets.compare_digest(token, session.get("csrf_token", "")):
                 abort(403, "CSRF token missing or invalid")
 
     # ------------------------------------------------------------------
