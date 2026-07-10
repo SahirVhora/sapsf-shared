@@ -33,5 +33,26 @@ class SFClientError(SFError):
         self.url = url
 
 
+class AmbiguousWriteError(SFClientError):
+    """Raised when a write may have succeeded but no definitive response was received.
+
+    Retrying such a request automatically could duplicate a create or apply a
+    mutation twice. Callers should reconcile the target state before deciding
+    whether to retry.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        method: str,
+        status_code: int | None = None,
+        body: str = "",
+        url: str | None = None,
+    ) -> None:
+        super().__init__(message, status_code=status_code, body=body, url=url)
+        self.method = method
+
+
 class AuthError(SFError):
     """Raised when authentication cannot be established."""

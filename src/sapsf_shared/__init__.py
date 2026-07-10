@@ -13,7 +13,7 @@ from sapsf_shared.auth import (
 )
 from sapsf_shared.client import SFClient
 from sapsf_shared.config import SFEnvConfig, load_config, load_yaml
-from sapsf_shared.exceptions import SFClientError, SFConfigError, SFError
+from sapsf_shared.exceptions import AmbiguousWriteError, SFClientError, SFConfigError, SFError
 from sapsf_shared.logging_config import CredentialRedactionFilter, setup_logging
 from sapsf_shared.permissions import (
     PermissionAnalyzer,
@@ -39,6 +39,7 @@ from sapsf_shared.utils import (
 __all__ = [
     "audit",
     "audit_log",
+    "AmbiguousWriteError",
     "AuthConfig",
     "AuthError",
     "BasicAuth",

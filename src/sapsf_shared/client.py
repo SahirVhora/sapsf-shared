@@ -21,7 +21,7 @@ import requests
 from requests.adapters import HTTPAdapter
 
 from sapsf_shared.auth import AuthConfig, build_requests_auth
-from sapsf_shared.exceptions import SFClientError
+from sapsf_shared.exceptions import AmbiguousWriteError, SFClientError
 from sapsf_shared.utils import odata_escape
 
 logger = logging.getLogger(__name__)
@@ -30,6 +30,7 @@ logger = logging.getLogger(__name__)
 RETRY_STATUS_CODES = frozenset({429, 500, 502, 503, 504})
 MAX_RETRIES = 3
 BACKOFF_SECONDS = (1, 2, 4)
+RETRYABLE_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
 
 
 class SFClient:
@@ -95,13 +96,29 @@ class SFClient:
         url: str,
         **kwargs: Any,
     ) -> requests.Response:
-        """Execute an HTTP request with retry logic on transient errors."""
+        """Execute a request, retrying transient failures only for safe methods.
+
+        A failed write response is ambiguous: the server may have committed the
+        mutation before the response was lost. Replaying it here could create a
+        duplicate, so callers must reconcile target state instead.
+        """
+        method = method.upper()
+        may_retry = method in RETRYABLE_METHODS
         last_exc: Exception | None = None
         for attempt in range(MAX_RETRIES):
             try:
                 resp = self._session.request(method, url, timeout=self.config.timeout_sec, **kwargs)
                 if resp.status_code not in RETRY_STATUS_CODES:
                     return resp
+                if not may_retry:
+                    raise AmbiguousWriteError(
+                        f"{method} outcome is unknown after HTTP {resp.status_code}; "
+                        "reconcile target state before retrying",
+                        method=method,
+                        status_code=resp.status_code,
+                        body=resp.text[:2000],
+                        url=url,
+                    )
                 wait = BACKOFF_SECONDS[min(attempt, len(BACKOFF_SECONDS) - 1)]
                 logger.warning(
                     "HTTP %s from %s (attempt %d/%d) - retrying in %ds",
@@ -111,9 +128,19 @@ class SFClient:
                     MAX_RETRIES,
                     wait,
                 )
-                time.sleep(wait)
                 last_exc = None
+                if attempt < MAX_RETRIES - 1:
+                    time.sleep(wait)
+            except AmbiguousWriteError:
+                raise
             except requests.exceptions.RequestException as exc:
+                if not may_retry:
+                    raise AmbiguousWriteError(
+                        f"{method} outcome is unknown after a network error; "
+                        "reconcile target state before retrying",
+                        method=method,
+                        url=url,
+                    ) from exc
                 wait = BACKOFF_SECONDS[min(attempt, len(BACKOFF_SECONDS) - 1)]
                 logger.warning(
                     "Request error on %s (attempt %d/%d): %s - retrying in %ds",
@@ -124,7 +151,8 @@ class SFClient:
                     wait,
                 )
                 last_exc = exc
-                time.sleep(wait)
+                if attempt < MAX_RETRIES - 1:
+                    time.sleep(wait)
 
         if last_exc:
             raise SFClientError(

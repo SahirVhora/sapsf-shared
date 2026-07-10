@@ -1,6 +1,7 @@
 """Tests for sapsf_shared.exceptions."""
 
 from sapsf_shared.exceptions import (
+    AmbiguousWriteError,
     AuthError,
     SFClientError,
     SFConfigError,
@@ -23,6 +24,7 @@ class TestSFError:
         assert issubclass(SFConfigError, SFError)
         assert issubclass(AuthError, SFError)
         assert issubclass(SFClientError, SFError)
+        assert issubclass(AmbiguousWriteError, SFClientError)
 
 
 class TestSFClientError:
@@ -38,6 +40,20 @@ class TestSFClientError:
     def test_body(self):
         exc = SFClientError("Error", body="Internal server error")
         assert exc.body == "Internal server error"
+
+
+class TestAmbiguousWriteError:
+    def test_method_and_client_error_fields(self):
+        exc = AmbiguousWriteError(
+            "Outcome unknown",
+            method="POST",
+            status_code=503,
+            body="Unavailable",
+            url="https://api.example.com/odata/v2/Users",
+        )
+        assert exc.method == "POST"
+        assert exc.status_code == 503
+        assert exc.body == "Unavailable"
 
 
 class TestSFConfigError:
