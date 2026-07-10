@@ -4,10 +4,11 @@ import json
 from unittest.mock import MagicMock, patch
 
 import pytest
+import requests
 
 from sapsf_shared.auth import AuthConfig
 from sapsf_shared.client import SFClient
-from sapsf_shared.exceptions import SFClientError
+from sapsf_shared.exceptions import AmbiguousWriteError, SFClientError
 
 
 @pytest.fixture
@@ -82,6 +83,35 @@ class TestRequestWithRetry:
         # After 3 retries, returns the last response
         assert resp.status_code == 503
         assert mock_request.call_count == 3
+
+    @patch("sapsf_shared.client.time.sleep")
+    @patch("sapsf_shared.client.requests.Session.request")
+    def test_post_network_error_is_not_retried(self, mock_request, mock_sleep, auth_config):
+        mock_request.side_effect = requests.exceptions.Timeout("response lost")
+
+        client = SFClient(auth_config)
+        with pytest.raises(AmbiguousWriteError) as exc:
+            client.post("Users", {"userId": "2"})
+
+        assert exc.value.method == "POST"
+        assert "reconcile target state" in str(exc.value)
+        mock_request.assert_called_once()
+        mock_sleep.assert_not_called()
+
+    @patch("sapsf_shared.client.time.sleep")
+    @patch("sapsf_shared.client.requests.Session.request")
+    def test_post_retryable_status_is_not_retried(self, mock_request, mock_sleep, auth_config):
+        mock_request.return_value.status_code = 503
+        mock_request.return_value.text = "Service unavailable"
+
+        client = SFClient(auth_config)
+        with pytest.raises(AmbiguousWriteError) as exc:
+            client.post("Users", {"userId": "2"})
+
+        assert exc.value.status_code == 503
+        assert exc.value.body == "Service unavailable"
+        mock_request.assert_called_once()
+        mock_sleep.assert_not_called()
 
 
 class TestCheckResponse:
