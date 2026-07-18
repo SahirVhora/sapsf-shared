@@ -1,5 +1,11 @@
 """sapsf-shared - Shared Python SDK for SAP SuccessFactors tools."""
 
+from sapsf_shared.assurance import (
+    ASSURANCE_SCHEMA,
+    AssuranceValidationError,
+    new_assurance_document,
+    validate_assurance_document,
+)
 from sapsf_shared.audit import audit, audit_log
 from sapsf_shared.auth import (
     AuthConfig,
@@ -15,6 +21,7 @@ from sapsf_shared.client import SFClient
 from sapsf_shared.config import SFEnvConfig, load_config, load_yaml
 from sapsf_shared.exceptions import AmbiguousWriteError, SFClientError, SFConfigError, SFError
 from sapsf_shared.logging_config import CredentialRedactionFilter, setup_logging
+from sapsf_shared.pagination import trusted_pagination_url
 from sapsf_shared.permissions import (
     PermissionAnalyzer,
     PermissionCatalogue,
@@ -22,6 +29,7 @@ from sapsf_shared.permissions import (
     PermissionScanReport,
     UserRoleAssignment,
 )
+from sapsf_shared.retry import get_with_retry
 from sapsf_shared.snapshot import (
     SnapshotDiff,
     SnapshotRef,
@@ -37,6 +45,8 @@ from sapsf_shared.utils import (
 )
 
 __all__ = [
+    "ASSURANCE_SCHEMA",
+    "AssuranceValidationError",
     "audit",
     "audit_log",
     "AmbiguousWriteError",
@@ -64,11 +74,15 @@ __all__ = [
     "build_odata_filter",
     "build_requests_auth",
     "flatten_record",
+    "get_with_retry",
     "is_active_today",
     "load_config",
     "load_yaml",
+    "new_assurance_document",
     "odata_escape",
     "parse_sf_date",
     "parse_only",
     "setup_logging",
+    "trusted_pagination_url",
+    "validate_assurance_document",
 ]

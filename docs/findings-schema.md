@@ -1,5 +1,7 @@
 # SF Compass Suite - Findings Schema (v1)
 
+> Compatibility format. New portfolio integrations should emit the broader [`sapsf-assurance/v1`](assurance-exchange-v1.md) contract, which includes engagement context, actions and evidence. Existing findings-only emitters remain supported during migration.
+
 A common JSON format for analysis findings, so every scanner in the suite
 (sf-config-debt-radar, sf-position-integrity-checker, sf-config-compare, ...)
 can emit results that any other tool (the sf-compass dashboard, AI agents via
