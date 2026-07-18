@@ -22,6 +22,7 @@ from requests.adapters import HTTPAdapter
 
 from sapsf_shared.auth import AuthConfig, build_requests_auth
 from sapsf_shared.exceptions import AmbiguousWriteError, SFClientError
+from sapsf_shared.pagination import trusted_pagination_url
 from sapsf_shared.utils import odata_escape
 
 logger = logging.getLogger(__name__)
@@ -90,6 +91,10 @@ class SFClient:
     def _url(self, entity_set: str) -> str:
         return f"{self.base_url}/{entity_set}"
 
+    def _trusted_pagination_url(self, candidate: str, current_url: str) -> str:
+        """Resolve a next link and fail closed before credentials are reused."""
+        return trusted_pagination_url(self.base_url, candidate, current_url)
+
     def _request_with_retry(
         self,
         method: str,
@@ -104,6 +109,7 @@ class SFClient:
         """
         method = method.upper()
         may_retry = method in RETRYABLE_METHODS
+        kwargs.setdefault("allow_redirects", False)
         last_exc: Exception | None = None
         for attempt in range(MAX_RETRIES):
             try:
@@ -164,6 +170,12 @@ class SFClient:
 
     def _check_response(self, resp: requests.Response, url: str) -> dict[str, Any]:
         """Parse JSON, handle auth errors, and return the OData payload dict."""
+        if 300 <= resp.status_code < 400:
+            raise SFClientError(
+                "Rejected redirect from credentialed SuccessFactors request",
+                status_code=resp.status_code,
+                url=url,
+            )
         if resp.status_code == 401:
             raise SFClientError(
                 "Authentication failed - check username, password, and company_id",
@@ -293,7 +305,11 @@ class SFClient:
 
         next_url: str | None = url
         first_call = True
+        seen_urls: set[str] = set()
         while next_url:
+            if next_url in seen_urls:
+                raise SFClientError("Detected OData pagination cycle", url=next_url)
+            seen_urls.add(next_url)
             resp = self._request_with_retry(
                 "GET",
                 next_url,
@@ -303,7 +319,8 @@ class SFClient:
             payload = self._check_response(resp, next_url or url)
             data = payload.get("d", {})
             yield from data.get("results", [])
-            next_url = data.get("__next")
+            candidate = data.get("__next")
+            next_url = self._trusted_pagination_url(candidate, next_url) if candidate else None
 
     def get_entity_by_code(
         self,
@@ -340,8 +357,12 @@ class SFClient:
         results: list[dict[str, Any]] = []
         next_url: str | None = url
         first_call = True
+        seen_urls: set[str] = set()
 
         while next_url:
+            if next_url in seen_urls:
+                raise SFClientError("Detected OData pagination cycle", url=next_url)
+            seen_urls.add(next_url)
             resp = self._request_with_retry(
                 "GET",
                 next_url,
@@ -353,7 +374,8 @@ class SFClient:
             batch = data.get("results", [])
             results.extend(batch)
 
-            next_url = data.get("__next")
+            candidate = data.get("__next")
+            next_url = self._trusted_pagination_url(candidate, next_url) if candidate else None
             logger.debug(
                 "GET %s → %d records (total so far: %d)%s",
                 next_url or url,

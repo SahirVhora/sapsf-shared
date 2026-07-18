@@ -206,6 +206,31 @@ Live tenant pulling is intentionally not wired in this layer yet; it should be
 added on top of `SFClient` with resumable progress once the first analyzer reads
 snapshots offline.
 
+### Assurance Exchange
+
+New tools can exchange engagement context, findings, actions and evidence through
+`sapsf-assurance/v1`:
+
+```python
+from sapsf_shared import new_assurance_document, validate_assurance_document
+
+document = new_assurance_document(
+    engagement_id="ENG-001",
+    engagement_name="Migration Assurance",
+    client_alias="CLIENT-A",
+    run_id="RUN-001",
+    tool="migration-tool",
+    tool_version="1.0.0",
+)
+validate_assurance_document(document)
+```
+
+See [`docs/assurance-exchange-v1.md`](docs/assurance-exchange-v1.md), the machine-readable
+[`schemas/sapsf-assurance-v1.schema.json`](schemas/sapsf-assurance-v1.schema.json), and the
+safe example in [`examples/`](examples/sapsf-assurance-v1.example.json). The runtime
+validator rejects broken references, duplicate IDs, raw tenant identifiers and
+obvious credential/PII fields.
+
 ## Development
 
 ```bash

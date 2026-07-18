@@ -1,0 +1,117 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sahirvhora.github.io/sf-compass/schemas/sapsf-assurance-v1.schema.json",
+  "title": "SAP SuccessFactors Assurance Exchange",
+  "description": "Portfolio-wide engagement, run, findings, actions and evidence contract. Employee data and credentials are forbidden.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "engagement", "run", "summary", "findings", "actions", "evidence"],
+  "properties": {
+    "schema": {"const": "sapsf-assurance/v1"},
+    "engagement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name", "client_alias", "countries", "modules", "stage"],
+      "properties": {
+        "id": {"type": "string", "minLength": 1},
+        "name": {"type": "string", "minLength": 1},
+        "client_alias": {"type": "string", "minLength": 1, "not": {"pattern": "@"}},
+        "programme": {"type": "string"},
+        "countries": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+        "modules": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+        "stage": {"enum": ["discovery", "design", "build", "rehearsal", "cutover", "hypercare", "operate"]}
+      }
+    },
+    "run": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "tool", "tool_version", "generated_at", "mode", "scope"],
+      "properties": {
+        "id": {"type": "string", "minLength": 1},
+        "tool": {"type": "string", "minLength": 1},
+        "tool_version": {"type": "string", "minLength": 1},
+        "generated_at": {"type": "string", "format": "date-time"},
+        "as_of_date": {"type": "string", "format": "date"},
+        "mode": {"enum": ["local", "offline", "read_only_tenant", "demo"]},
+        "tenant": {"type": "string", "pattern": "\\*\\*\\*masked\\*\\*\\*"},
+        "scope": {"type": "object"}
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "records_assessed", "findings", "by_severity"],
+      "properties": {
+        "status": {"enum": ["pass", "attention_required", "blocked", "incomplete"]},
+        "records_assessed": {"type": "integer", "minimum": 0},
+        "findings": {"type": "integer", "minimum": 0},
+        "by_severity": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "critical": {"type": "integer", "minimum": 0},
+            "high": {"type": "integer", "minimum": 0},
+            "medium": {"type": "integer", "minimum": 0},
+            "low": {"type": "integer", "minimum": 0},
+            "info": {"type": "integer", "minimum": 0}
+          }
+        }
+      }
+    },
+    "findings": {"type": "array", "items": {"$ref": "#/$defs/finding"}},
+    "actions": {"type": "array", "items": {"$ref": "#/$defs/action"}},
+    "evidence": {"type": "array", "items": {"$ref": "#/$defs/evidence"}}
+  },
+  "$defs": {
+    "finding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "rule_id", "severity", "status", "category", "title", "description", "object_type", "object_ref", "evidence_refs", "action_refs"],
+      "properties": {
+        "id": {"type": "string", "minLength": 1},
+        "rule_id": {"type": "string", "minLength": 1},
+        "severity": {"enum": ["critical", "high", "medium", "low", "info"]},
+        "status": {"enum": ["open", "accepted", "in_progress", "resolved", "false_positive"]},
+        "category": {"type": "string"},
+        "title": {"type": "string"},
+        "description": {"type": "string"},
+        "object_type": {"type": "string"},
+        "object_ref": {"type": "string"},
+        "details": {"type": "object"},
+        "evidence_refs": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+        "action_refs": {"type": "array", "items": {"type": "string"}, "uniqueItems": true}
+      }
+    },
+    "action": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "title", "owner_role", "priority", "status", "finding_refs"],
+      "properties": {
+        "id": {"type": "string", "minLength": 1},
+        "title": {"type": "string"},
+        "owner_role": {"type": "string"},
+        "priority": {"enum": ["critical", "high", "medium", "low"]},
+        "status": {"enum": ["open", "in_progress", "blocked", "completed", "cancelled"]},
+        "due_date": {"type": "string", "format": "date"},
+        "decision": {"type": "string"},
+        "finding_refs": {"type": "array", "items": {"type": "string"}, "uniqueItems": true}
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "type", "description", "classification", "source", "generated_at"],
+      "properties": {
+        "id": {"type": "string", "minLength": 1},
+        "type": {"type": "string"},
+        "description": {"type": "string"},
+        "classification": {"enum": ["public", "internal", "confidential", "restricted"]},
+        "source": {"type": "string"},
+        "generated_at": {"type": "string", "format": "date-time"},
+        "uri": {"type": "string"},
+        "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "record_count": {"type": "integer", "minimum": 0}
+      }
+    }
+  }
+}

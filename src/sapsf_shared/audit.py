@@ -29,15 +29,21 @@ from typing import Any
 
 audit_logger = logging.getLogger("sapsf.audit")
 
-# Default log path - can be overridden via SAPSF_AUDIT_LOG env var
-_AUDIT_LOG_PATH = _os.environ.get(
-    "SAPSF_AUDIT_LOG",
-    str(Path.home() / ".local" / "share" / "sapsf" / "audit.jsonl"),
-)
+
+def _audit_log_path() -> Path:
+    """Return the current audit log path, honoring runtime env changes."""
+    return Path(
+        _os.environ.get(
+            "SAPSF_AUDIT_LOG",
+            str(Path.home() / ".local" / "share" / "sapsf" / "audit.jsonl"),
+        )
+    )
 
 
-def _ensure_audit_log_dir() -> None:
-    Path(_AUDIT_LOG_PATH).parent.mkdir(parents=True, exist_ok=True)
+def _ensure_audit_log_dir() -> Path:
+    path = _audit_log_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    return path
 
 
 def audit_log(
@@ -59,7 +65,6 @@ def audit_log(
         details: Optional human-readable context
         tenant: Target SF tenant identifier (base_url or alias)
     """
-    _ensure_audit_log_dir()
     event: dict[str, Any] = {
         "tool": tool,
         "action": action,
@@ -74,8 +79,9 @@ def audit_log(
         event["tenant"] = tenant
 
     try:
-        with open(_AUDIT_LOG_PATH, "a") as f:
-            f.write(json.dumps(event) + "\n")
+        audit_path = _ensure_audit_log_dir()
+        with audit_path.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(event, ensure_ascii=False) + "\n")
     except OSError:
         audit_logger.warning("Failed to write audit event (disk full or permission error)")
     audit_logger.debug("Audit: %s %s -> %s", tool, action, status)

@@ -195,7 +195,7 @@ class TestPagination:
         page1.json.return_value = {
             "d": {
                 "results": [{"id": "1"}],
-                "__next": "https://api.example.com/Users?$skip=1",
+                "__next": "https://api.example.com/odata/v2/Users?$skip=1",
             }
         }
         page2 = MagicMock()

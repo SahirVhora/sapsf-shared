@@ -1,0 +1,64 @@
+{
+  "schema": "sapsf-assurance/v1",
+  "engagement": {
+    "id": "ENG-DEMO-001",
+    "name": "Migration Assurance Rehearsal",
+    "client_alias": "CLIENT-DEMO",
+    "programme": "Employee Central migration",
+    "countries": ["GBR"],
+    "modules": ["Employee Central"],
+    "stage": "rehearsal"
+  },
+  "run": {
+    "id": "RUN-DEMO-001",
+    "tool": "migration-tool",
+    "tool_version": "1.0.0",
+    "generated_at": "2026-07-18T12:00:00+00:00",
+    "as_of_date": "2026-07-18",
+    "mode": "demo",
+    "tenant": "https://***masked***.sapsf.eu",
+    "scope": {"country": "GBR", "object_types": ["EmpJob"]}
+  },
+  "summary": {
+    "status": "attention_required",
+    "records_assessed": 1000,
+    "findings": 1,
+    "by_severity": {"high": 1}
+  },
+  "findings": [
+    {
+      "id": "F-001",
+      "rule_id": "MAP-001",
+      "severity": "high",
+      "status": "open",
+      "category": "mapping",
+      "title": "Required target field is unmapped",
+      "description": "A required target field needs an approved source rule.",
+      "object_type": "EmpJob",
+      "object_ref": "FIELD:company",
+      "evidence_refs": ["E-001"],
+      "action_refs": ["A-001"]
+    }
+  ],
+  "actions": [
+    {
+      "id": "A-001",
+      "title": "Approve company mapping",
+      "owner_role": "Data Lead",
+      "priority": "high",
+      "status": "open",
+      "finding_refs": ["F-001"]
+    }
+  ],
+  "evidence": [
+    {
+      "id": "E-001",
+      "type": "validation_summary",
+      "description": "Deterministic mapping validation output",
+      "classification": "confidential",
+      "source": "migration-tool",
+      "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "generated_at": "2026-07-18T12:00:00+00:00"
+    }
+  ]
+}
