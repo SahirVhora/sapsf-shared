@@ -67,7 +67,9 @@ def _check_no_sensitive_fields(value: Any, path: str = "document") -> None:
         for key, child in value.items():
             normalized = str(key).strip().lower().replace("-", "_")
             if normalized in _SENSITIVE_KEYS:
-                raise AssuranceValidationError(f"{path}.{key} is a sensitive field and is forbidden")
+                raise AssuranceValidationError(
+                    f"{path}.{key} is a sensitive field and is forbidden"
+                )
             _check_no_sensitive_fields(child, f"{path}.{key}")
     elif isinstance(value, list):
         for index, child in enumerate(value):
@@ -100,14 +102,24 @@ def validate_assurance_document(document: dict[str, Any]) -> None:
     duplicate IDs, obvious credential/PII fields, and raw tenant identifiers.
     """
     root = _require_mapping(document, "document")
-    required_sections = {"schema", "engagement", "run", "summary", "findings", "actions", "evidence"}
+    required_sections = {
+        "schema",
+        "engagement",
+        "run",
+        "summary",
+        "findings",
+        "actions",
+        "evidence",
+    }
     _require_fields(root, required_sections, "document")
     if root["schema"] != ASSURANCE_SCHEMA:
         raise AssuranceValidationError(f"schema must be {ASSURANCE_SCHEMA}")
     _check_no_sensitive_fields(root)
 
     engagement = _require_mapping(root["engagement"], "engagement")
-    _require_fields(engagement, {"id", "name", "client_alias", "countries", "modules", "stage"}, "engagement")
+    _require_fields(
+        engagement, {"id", "name", "client_alias", "countries", "modules", "stage"}, "engagement"
+    )
     if not engagement["client_alias"] or "@" in str(engagement["client_alias"]):
         raise AssuranceValidationError("engagement.client_alias must be a non-personal alias")
     _require_list(engagement["countries"], "engagement.countries")
@@ -167,12 +179,18 @@ def validate_assurance_document(document: dict[str, Any]) -> None:
             raise AssuranceValidationError(f"findings[{index}].severity is not canonical")
         if finding["status"] not in FINDING_STATUSES:
             raise AssuranceValidationError(f"findings[{index}].status is not canonical")
-        _check_references(finding["evidence_refs"], evidence_ids, f"findings[{index}].evidence_refs")
+        _check_references(
+            finding["evidence_refs"], evidence_ids, f"findings[{index}].evidence_refs"
+        )
         _check_references(finding["action_refs"], action_ids, f"findings[{index}].action_refs")
 
     for index, raw in enumerate(actions):
         action = _require_mapping(raw, f"actions[{index}]")
-        _require_fields(action, {"id", "title", "owner_role", "priority", "status", "finding_refs"}, f"actions[{index}]")
+        _require_fields(
+            action,
+            {"id", "title", "owner_role", "priority", "status", "finding_refs"},
+            f"actions[{index}]",
+        )
         if action["priority"] not in PRIORITIES:
             raise AssuranceValidationError(f"actions[{index}].priority is not canonical")
         if action["status"] not in ACTION_STATUSES:
@@ -181,12 +199,18 @@ def validate_assurance_document(document: dict[str, Any]) -> None:
 
     for index, raw in enumerate(evidence):
         item = _require_mapping(raw, f"evidence[{index}]")
-        _require_fields(item, {"id", "type", "description", "classification", "source", "generated_at"}, f"evidence[{index}]")
+        _require_fields(
+            item,
+            {"id", "type", "description", "classification", "source", "generated_at"},
+            f"evidence[{index}]",
+        )
         if item["classification"] not in EVIDENCE_CLASSIFICATIONS:
             raise AssuranceValidationError(f"evidence[{index}].classification is not canonical")
         digest = item.get("sha256")
         if digest is not None and not _SHA256_RE.fullmatch(str(digest)):
-            raise AssuranceValidationError(f"evidence[{index}].sha256 must be a lowercase SHA-256 digest")
+            raise AssuranceValidationError(
+                f"evidence[{index}].sha256 must be a lowercase SHA-256 digest"
+            )
 
 
 def new_assurance_document(

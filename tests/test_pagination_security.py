@@ -49,7 +49,10 @@ class TestTrustedPagination:
         ]
 
         assert [row["id"] for row in client.get("User")] == ["1", "2"]
-        assert request.call_args_list[1].args[1] == "https://api.example.com/odata/v2/User?$skiptoken=abc"
+        assert (
+            request.call_args_list[1].args[1]
+            == "https://api.example.com/odata/v2/User?$skiptoken=abc"
+        )
 
     @pytest.mark.parametrize(
         "next_url",

@@ -101,7 +101,9 @@ def test_factory_creates_valid_minimal_document():
     assert document["evidence"] == []
 
 
-@pytest.mark.parametrize("missing", ["schema", "engagement", "run", "summary", "findings", "actions", "evidence"])
+@pytest.mark.parametrize(
+    "missing", ["schema", "engagement", "run", "summary", "findings", "actions", "evidence"]
+)
 def test_rejects_missing_top_level_contract_sections(missing):
     document = valid_document()
     del document[missing]
@@ -135,7 +137,18 @@ def test_rejects_broken_action_finding_reference():
         validate_assurance_document(document)
 
 
-@pytest.mark.parametrize("sensitive_key", ["password", "access_token", "client_secret", "employee_name", "email", "national_id", "bank_account"])
+@pytest.mark.parametrize(
+    "sensitive_key",
+    [
+        "password",
+        "access_token",
+        "client_secret",
+        "employee_name",
+        "email",
+        "national_id",
+        "bank_account",
+    ],
+)
 def test_rejects_sensitive_fields_anywhere_in_document(sensitive_key):
     document = valid_document()
     document["findings"][0]["details"] = {sensitive_key: "must-not-be-here"}

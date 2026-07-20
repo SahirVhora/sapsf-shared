@@ -39,8 +39,10 @@ def trusted_pagination_url(base_url: str, candidate: str, current_url: str) -> s
         raise SFClientError("Rejected cross-origin OData pagination URL")
 
     service_path = base.path.rstrip("/")
-    if service_path and parsed.path != service_path and not parsed.path.startswith(
-        service_path + "/"
+    if (
+        service_path
+        and parsed.path != service_path
+        and not parsed.path.startswith(service_path + "/")
     ):
         raise SFClientError("Rejected OData pagination URL outside the configured service path")
 
