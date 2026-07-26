@@ -1,4 +1,14 @@
-"""sapsf-shared - Shared Python SDK for SAP SuccessFactors tools."""
+"""sapsf-shared - Shared Python SDK for SAP SuccessFactors tools.
+
+Note on top-level imports: the Flask helpers (``check_local_token``,
+``require_local_token``) live in ``sapsf_shared.flask_base`` which imports
+``flask``. They are NOT imported eagerly here; instead they are exposed
+through PEP 562 module-level ``__getattr__`` so consumers reaching only for
+auth-/config- side helpers do not pay the Flask import cost. They remain
+findable via ``from sapsf_shared import require_local_token`` per ADR-0003.
+"""
+
+from typing import Any
 
 from sapsf_shared.assurance import (
     ASSURANCE_SCHEMA,
@@ -43,6 +53,27 @@ from sapsf_shared.utils import (
     odata_escape,
     parse_sf_date,
 )
+
+# Lazy-imported Flask helpers: the sapsf_shared.flask_base module pulls in
+# ``flask``. We expose them through the top-level namespace (findable via
+# ``from sapsf_shared import require_local_token``) but defer the actual
+# import so consumers that only need auth-/config- side helpers don't pay
+# the Flask import cost. ``__getattr__`` is the PEP 562 mechanism for
+# module-level lazy attribute resolution.
+_LAZY_ATTRS = frozenset({"check_local_token", "require_local_token"})
+
+
+def __getattr__(name: str) -> Any:  # pragma: no cover - introspection helper
+    if name in _LAZY_ATTRS:
+        from sapsf_shared import flask_base
+
+        return getattr(flask_base, name)
+    raise AttributeError(f"module 'sapsf_shared' has no attribute {name!r}")
+
+
+def __dir__() -> list[str]:  # pragma: no cover - introspection helper
+    return sorted(set(globals()) | set(__all__) | _LAZY_ATTRS)
+
 
 __all__ = [
     "ASSURANCE_SCHEMA",
