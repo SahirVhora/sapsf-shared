@@ -8,6 +8,8 @@ Provides a factory function that returns a pre-configured Flask app with:
   - /api/health endpoint
   - CORS preflight support
   - Rotating file log handler
+  - ``require_local_token`` decorator (ADR-0003) for header-only
+    report-style endpoints. Never accept the token via the query string.
 """
 
 from __future__ import annotations
@@ -15,10 +17,12 @@ from __future__ import annotations
 import logging
 import os
 import secrets
+from collections.abc import Callable
+from functools import wraps
 from pathlib import Path
 from typing import Any
 
-from flask import Flask, abort, jsonify, request, session
+from flask import Flask, abort, current_app, jsonify, request, session
 
 logger = logging.getLogger(__name__)
 
@@ -178,7 +182,7 @@ class SFApp(Flask):
                     "GET, POST, PUT, PATCH, DELETE, OPTIONS"
                 )
                 response.headers["Access-Control-Allow-Headers"] = (
-                    "Content-Type, Authorization, X-CSRF-Token"
+                    "Content-Type, Authorization, X-CSRF-Token, X-Report-Token, X-Auth-Token"
                 )
                 response.headers["Access-Control-Allow-Credentials"] = "true"
             return response
@@ -188,6 +192,163 @@ class SFApp(Flask):
             if request.method == "OPTIONS":
                 return "", 204
             return None
+
+
+def require_local_token(
+    token_supplier: Callable[[], str | None],
+    *,
+    header_name: str = "X-Report-Token",
+) -> Callable:
+    """Flask view decorator: header-only local-token gate (ADR-0003).
+
+    Reads the token from the configured request header (``X-Report-Token`` by
+    default). **Never** accepts the token via the query string. If ``?token=``
+    is present we deliberately reject the request, so legacy clients fall over
+    loudly instead of leaking through reverse-proxy / access-log / Referer
+    headers.
+
+    Args:
+        token_supplier: A zero-arg callable returning the configured token
+            (e.g. ``lambda: config.REPORT_ACCESS_TOKEN``). Returning ``None`` or
+            an empty string makes the endpoint refuse every request (503) so a
+            misconfigured deployment cannot become insecurely open.
+        header_name: Request header name to read the supplied token from.
+            Defaults to ``X-Report-Token``. Use ``X-Auth-Token`` for movement
+            tools.
+
+    The decorated view is rejected with 503 if the configured token is empty
+    (operator never set it), 401 if a ``?token=`` query argument is present
+    (legacy leak), and 403 if any other condition fails (no header, wrong
+    header). All comparisons use ``secrets.compare_digest`` for constant-time
+    safety.
+    """
+
+    def decorator(view: Callable) -> Callable:
+        @wraps(view)
+        def wrapper(*args: Any, **kwargs: Any) -> Any:
+            configured = token_supplier() or ""
+            if not configured:
+                current_app.logger.warning(
+                    "require_local_token rejected request: reason=not_configured path=%s remote=%s",
+                    request.path,
+                    request.remote_addr,
+                )
+                return (
+                    jsonify(
+                        {
+                            "error": (
+                                "Local auth token is not configured "
+                                "for this deployment. Set REPORT_ACCESS_TOKEN "
+                                "(or the tool-specific fallback) and restart."
+                            )
+                        }
+                    ),
+                    503,
+                )
+            # Deliberate rejection of ?token=... -- see ADR-0003 and R-001..R-004
+            if "token" in request.args:
+                current_app.logger.warning(
+                    "require_local_token rejected request: reason=legacy_query "
+                    "path=%s remote=%s (ADR-0003: header-only)",
+                    request.path,
+                    request.remote_addr,
+                )
+                return (
+                    jsonify(
+                        {
+                            "error": (
+                                "Auth tokens must be sent as the "
+                                f"{header_name} header. The ?token= query "
+                                "parameter is no longer accepted."
+                            )
+                        }
+                    ),
+                    401,
+                )
+            supplied = request.headers.get(header_name, "")
+            if not supplied or not secrets.compare_digest(
+                supplied.encode("utf-8"), configured.encode("utf-8")
+            ):
+                current_app.logger.warning(
+                    "require_local_token rejected request: reason=missing_or_invalid_header "
+                    "header=%s path=%s remote=%s",
+                    header_name,
+                    request.path,
+                    request.remote_addr,
+                )
+                return (
+                    jsonify(
+                        {
+                            "error": (
+                                f"Missing or invalid auth token. Pass it in the "
+                                f"{header_name} header."
+                            )
+                        }
+                    ),
+                    403,
+                )
+            return view(*args, **kwargs)
+
+        return wrapper
+
+    return decorator
+
+
+def check_local_token(
+    configured: str | None,
+    *,
+    header_name: str = "X-Report-Token",
+    legacy_query_arg: str = "token",
+) -> bool:
+    """Minimum-disruption local-token check used by existing report routes.
+
+    This helper exists so the four ADR-0003 sites (sf-config-compare,
+    sf-config-compare-ec, sf-metadata-vault, sf-object-sync) can adopt
+    header-first auth **without** breaking the existing flow while owners
+    transition clients. Behaviour:
+
+    1. ``configured`` empty / falsy → return ``True`` (no token required for
+       this deployment, matches the existing inline guards).
+    2. Header ``header_name`` provided and matches → ``True``.
+    3. Otherwise fall back to legacy ``?{legacy_query_arg}=`` (with warning
+       log so it is visible in monitoring).
+    4. Returns ``False`` if neither matches; the caller aborts 403.
+
+    The legacy query-string fallback is **deprecated**; new code should use
+    :func:`require_local_token` instead. We keep this helper as the bridge
+    because it keeps the existing ``_check_report_token`` call sites working
+    until query-string-using clients (links in older reports) are updated.
+
+    Args:
+        configured: The configured token (e.g. ``REPORT_ACCESS_TOKEN``).
+        header_name: Request header to read first. Default ``X-Report-Token``.
+        legacy_query_arg: Query-string parameter name accepted as fallback.
+
+    Returns:
+        ``True`` if the request is authorised, ``False`` otherwise.
+    """
+    if not configured:
+        return True
+    supplied = request.headers.get(header_name, "")
+    if supplied and secrets.compare_digest(supplied.encode("utf-8"), configured.encode("utf-8")):
+        return True
+    legacy = request.args.get(legacy_query_arg, "")
+    if legacy and secrets.compare_digest(legacy.encode("utf-8"), configured.encode("utf-8")):
+        current_app.logger.warning(
+            "check_local_token accepted deprecated query token: path=%s remote=%s "
+            "query_arg=%s (switch to %s header per ADR-0003)",
+            request.path,
+            request.remote_addr,
+            legacy_query_arg,
+            header_name,
+        )
+        return True
+    current_app.logger.warning(
+        "check_local_token rejected request: reason=missing_or_invalid_token path=%s remote=%s",
+        request.path,
+        request.remote_addr,
+    )
+    return False
 
 
 def create_app(
