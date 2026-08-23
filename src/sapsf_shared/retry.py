@@ -47,10 +47,12 @@ def get_with_retry(url: str, **kwargs: Any) -> requests.Response:
     # Credentialed calls must never forward auth across redirects. Callers may
     # inspect a 3xx response and decide on an explicitly revalidated URL.
     kwargs["allow_redirects"] = False
+    # Bound stalled connections while preserving a caller's explicit timeout.
+    timeout = kwargs.pop("timeout", 60)
 
     for attempt in range(MAX_RETRIES):
         try:
-            resp = requests.get(url, **kwargs)
+            resp = requests.get(url, timeout=timeout, **kwargs)
         except requests.exceptions.RequestException as exc:
             last_exc = exc
             wait = BACKOFF_SECONDS[min(attempt, len(BACKOFF_SECONDS) - 1)]

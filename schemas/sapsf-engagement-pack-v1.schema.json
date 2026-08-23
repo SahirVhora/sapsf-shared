@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sahirvhora.github.io/sapsf/schemas/sapsf-engagement-pack-v1.schema.json",
+  "title": "SAP SuccessFactors Engagement Pack v1",
+  "type": "object",
+  "required": ["schema", "generated_at", "engagement", "recommendation", "approvals", "gates", "summary", "runs", "findings", "actions", "evidence"],
+  "properties": {
+    "schema": {"const": "sapsf-engagement-pack/v1"},
+    "generated_at": {"type": "string", "format": "date-time"},
+    "engagement": {
+      "type": "object",
+      "required": ["id", "name", "client_alias", "countries", "modules"],
+      "properties": {
+        "id": {"type": "string", "minLength": 1},
+        "name": {"type": "string", "minLength": 1},
+        "client_alias": {"type": "string", "minLength": 1},
+        "countries": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+        "modules": {"type": "array", "items": {"type": "string"}, "uniqueItems": true}
+      },
+      "additionalProperties": false
+    },
+    "recommendation": {"enum": ["hold", "proceed_with_conditions", "proceed"]},
+    "approvals": {
+      "type": "object",
+      "required": ["scope", "hypercare_closure"],
+      "properties": {
+        "scope": {"$ref": "#/$defs/approval"},
+        "hypercare_closure": {"$ref": "#/$defs/approval"}
+      },
+      "additionalProperties": false
+    },
+    "gates": {
+      "type": "array",
+      "minItems": 5,
+      "maxItems": 5,
+      "items": {"$ref": "#/$defs/gate"}
+    },
+    "summary": {
+      "type": "object",
+      "required": ["runs", "current_runs", "historical_runs", "records_assessed", "control_assessments", "records_assessed_by_tool", "findings", "historical_findings", "open_critical", "open_high", "evidence"],
+      "additionalProperties": {"type": ["integer", "object"]}
+    },
+    "runs": {"type": "array", "items": {"type": "object"}},
+    "findings": {"type": "array", "items": {"type": "object"}},
+    "actions": {"type": "array", "items": {"type": "object"}},
+    "evidence": {"type": "array", "items": {"type": "object"}}
+  },
+  "$defs": {
+    "approval": {
+      "type": "object",
+      "required": ["approved", "reference"],
+      "properties": {
+        "approved": {"type": "boolean"},
+        "reference": {"type": "string", "maxLength": 128}
+      },
+      "additionalProperties": false
+    },
+    "gate": {
+      "type": "object",
+      "required": ["id", "status", "required_tools", "received_tools", "missing_tools", "unverified_tools", "open_critical", "open_high"],
+      "properties": {
+        "id": {"enum": ["G0", "G1", "G2", "G3", "G4"]},
+        "status": {"enum": ["pass", "attention_required", "blocked", "incomplete"]},
+        "required_tools": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+        "received_tools": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+        "missing_tools": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+        "unverified_tools": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+        "open_critical": {"type": "integer", "minimum": 0},
+        "open_high": {"type": "integer", "minimum": 0}
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

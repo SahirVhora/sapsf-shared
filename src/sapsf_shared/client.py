@@ -177,15 +177,25 @@ class SFClient:
                 url=url,
             )
         if resp.status_code == 401:
+            body = self._extract_error_body(resp)
+            message = "Authentication failed - check username, password, and company_id"
+            if body:
+                message = f"Authentication failed: {body}"
             raise SFClientError(
-                "Authentication failed - check username, password, and company_id",
+                message,
                 status_code=401,
+                body=body,
                 url=url,
             )
         if resp.status_code == 403:
+            body = self._extract_error_body(resp)
+            message = "Access denied - check API user permissions"
+            if body:
+                message = f"Access denied: {body}"
             raise SFClientError(
-                "Access denied - check API user permissions",
+                message,
                 status_code=403,
+                body=body,
                 url=url,
             )
         if resp.status_code >= 400:
@@ -303,24 +313,8 @@ class SFClient:
         if params:
             query.update(params)
 
-        next_url: str | None = url
-        first_call = True
-        seen_urls: set[str] = set()
-        while next_url:
-            if next_url in seen_urls:
-                raise SFClientError("Detected OData pagination cycle", url=next_url)
-            seen_urls.add(next_url)
-            resp = self._request_with_retry(
-                "GET",
-                next_url,
-                params=query if first_call else None,
-            )
-            first_call = False
-            payload = self._check_response(resp, next_url or url)
-            data = payload.get("d", {})
-            yield from data.get("results", [])
-            candidate = data.get("__next")
-            next_url = self._trusted_pagination_url(candidate, next_url) if candidate else None
+        for batch in self._iter_pages(url, query):
+            yield from batch
 
     def get_entity_by_code(
         self,
@@ -353,38 +347,77 @@ class SFClient:
         url: str,
         params: dict[str, str] | None,
     ) -> list[dict[str, Any]]:
-        """Follow OData __next links until exhausted."""
+        """Collect every page returned by the OData endpoint."""
         results: list[dict[str, Any]] = []
+        for batch in self._iter_pages(url, params):
+            results.extend(batch)
+        return results
+
+    def _iter_pages(
+        self,
+        url: str,
+        params: dict[str, str] | None,
+    ) -> Iterator[list[dict[str, Any]]]:
+        """Yield pages, with a numeric-$skip fallback for SF endpoints without __next.
+
+        Some SuccessFactors OData v2 endpoints return a full ``$top`` page but
+        omit ``d.__next``. In that case, continue from the next numeric
+        ``$skip`` offset until a short or empty page is returned. If the server
+        supplies ``__next`` at any point, its trusted same-origin link remains
+        authoritative and the numeric fallback is disabled.
+        """
         next_url: str | None = url
-        first_call = True
-        seen_urls: set[str] = set()
+        base_params = dict(params) if params else None
+        request_params = dict(base_params) if base_params else None
+        page_size = int(base_params.get("$top", "0")) if base_params else 0
+        numeric_skip = int(base_params.get("$skip", "0")) if base_params else 0
+        server_pagination = False
+        seen_requests: set[tuple[str, tuple[tuple[str, str], ...]]] = set()
 
         while next_url:
-            if next_url in seen_urls:
+            request_key = (
+                next_url,
+                tuple(sorted((request_params or {}).items())),
+            )
+            if request_key in seen_requests:
                 raise SFClientError("Detected OData pagination cycle", url=next_url)
-            seen_urls.add(next_url)
+            seen_requests.add(request_key)
             resp = self._request_with_retry(
                 "GET",
                 next_url,
-                params=params if first_call else None,
+                params=request_params,
             )
-            first_call = False
             payload = self._check_response(resp, next_url or url)
             data = payload.get("d", {})
             batch = data.get("results", [])
-            results.extend(batch)
+            yield batch
 
             candidate = data.get("__next")
-            next_url = self._trusted_pagination_url(candidate, next_url) if candidate else None
+            if candidate:
+                server_pagination = True
+                next_url = self._trusted_pagination_url(candidate, next_url)
+                request_params = None
+                continuation = " [has next]"
+            elif (
+                not server_pagination
+                and base_params is not None
+                and page_size > 0
+                and len(batch) >= page_size
+            ):
+                numeric_skip += len(batch)
+                request_params = {**base_params, "$skip": str(numeric_skip)}
+                next_url = url
+                continuation = " [numeric $skip fallback]"
+            else:
+                next_url = None
+                request_params = None
+                continuation = ""
             logger.debug(
-                "GET %s → %d records (total so far: %d)%s",
+                "GET %s → %d records%s",
                 next_url or url,
                 len(batch),
-                len(results),
-                " [has next]" if next_url else "",
+                continuation,
             )
-
-        return results
 
     def post(
         self,

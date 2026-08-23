@@ -1,7 +1,6 @@
 """Tests for sapsf_shared.auth."""
 
 import base64
-import json
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -163,13 +162,17 @@ class TestBasicAuthBuilder:
 
 
 class TestOAuth2Auth:
-    @patch("sapsf_shared.auth.urllib.request.urlopen")
-    def test_fetch_token_success(self, mock_urlopen):
+    @staticmethod
+    def _mock_token_response(mock_post, payload):
+        """Build a `requests.Response`-shaped MagicMock returning *payload*."""
         resp = MagicMock()
-        resp.read.return_value = json.dumps({"access_token": "tok123"}).encode()
-        mock_urlopen.return_value.__enter__ = lambda s: s
-        mock_urlopen.return_value.__exit__ = lambda *a: None
-        mock_urlopen.return_value.read = resp.read
+        resp.ok = True
+        resp.json.return_value = payload
+        mock_post.return_value = resp
+
+    @patch("sapsf_shared.auth.requests.post")
+    def test_fetch_token_success(self, mock_post):
+        self._mock_token_response(mock_post, {"access_token": "tok123"})
 
         cfg = AuthConfig(
             base_url="https://api.example.com",
@@ -182,13 +185,9 @@ class TestOAuth2Auth:
         token = OAuth2Auth.fetch_token(cfg)
         assert token == "tok123"
 
-    @patch("sapsf_shared.auth.urllib.request.urlopen")
-    def test_fetch_token_missing_token_raises(self, mock_urlopen):
-        resp = MagicMock()
-        resp.read.return_value = json.dumps({"error": "invalid"}).encode()
-        mock_urlopen.return_value.__enter__ = lambda s: s
-        mock_urlopen.return_value.__exit__ = lambda *a: None
-        mock_urlopen.return_value.read = resp.read
+    @patch("sapsf_shared.auth.requests.post")
+    def test_fetch_token_missing_token_raises(self, mock_post):
+        self._mock_token_response(mock_post, {"error": "invalid"})
 
         cfg = AuthConfig(
             base_url="https://api.example.com",
@@ -202,13 +201,9 @@ class TestOAuth2Auth:
             OAuth2Auth.fetch_token(cfg)
         assert "access_token" in str(exc.value)
 
-    @patch("sapsf_shared.auth.urllib.request.urlopen")
-    def test_build_returns_bearer_auth(self, mock_urlopen):
-        resp = MagicMock()
-        resp.read.return_value = json.dumps({"access_token": "tok123"}).encode()
-        mock_urlopen.return_value.__enter__ = lambda s: s
-        mock_urlopen.return_value.__exit__ = lambda *a: None
-        mock_urlopen.return_value.read = resp.read
+    @patch("sapsf_shared.auth.requests.post")
+    def test_build_returns_bearer_auth(self, mock_post):
+        self._mock_token_response(mock_post, {"access_token": "tok123"})
 
         cfg = AuthConfig(
             base_url="https://api.example.com",
@@ -251,12 +246,11 @@ class TestBuildRequestsAuth:
         assert cert is None
 
     def test_oauth2(self):
-        with patch("sapsf_shared.auth.urllib.request.urlopen") as mock_urlopen:
+        with patch("sapsf_shared.auth.requests.post") as mock_post:
             resp = MagicMock()
-            resp.read.return_value = json.dumps({"access_token": "tok123"}).encode()
-            mock_urlopen.return_value.__enter__ = lambda s: s
-            mock_urlopen.return_value.__exit__ = lambda *a: None
-            mock_urlopen.return_value.read = resp.read
+            resp.ok = True
+            resp.json.return_value = {"access_token": "tok123"}
+            mock_post.return_value = resp
 
             cfg = AuthConfig(
                 base_url="https://api.example.com",
@@ -315,13 +309,12 @@ class TestBuildAuthHeaders:
         decoded = base64.b64decode(headers["Authorization"].split()[1])
         assert decoded == b"user@MYCO:pass"
 
-    @patch("sapsf_shared.auth.urllib.request.urlopen")
-    def test_oauth2(self, mock_urlopen):
+    @patch("sapsf_shared.auth.requests.post")
+    def test_oauth2(self, mock_post):
         resp = MagicMock()
-        resp.read.return_value = json.dumps({"access_token": "tok123"}).encode()
-        mock_urlopen.return_value.__enter__ = lambda s: s
-        mock_urlopen.return_value.__exit__ = lambda *a: None
-        mock_urlopen.return_value.read = resp.read
+        resp.ok = True
+        resp.json.return_value = {"access_token": "tok123"}
+        mock_post.return_value = resp
 
         cfg = AuthConfig(
             base_url="https://api.example.com",

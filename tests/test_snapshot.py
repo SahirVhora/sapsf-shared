@@ -133,3 +133,14 @@ def test_snapshot_sqlite_contains_no_credentials(tmp_path: Path):
     serialized = "\n".join(row[0] for row in rows).lower()
     assert "password" not in serialized
     assert "secret" not in serialized
+
+
+def test_delete_snapshot_removes_only_the_resolved_snapshot(tmp_path: Path):
+    store = SnapshotStore(tmp_path)
+    first = store.create_snapshot("demo", {"positions": [{"code": "P1"}]})
+    second = store.create_snapshot("demo", {"positions": [{"code": "P2"}]})
+
+    assert store.delete_snapshot(first.snapshot_id, tenant="demo") is True
+    assert store.get_snapshot(first.snapshot_id, tenant="demo") is None
+    assert store.get_snapshot(second.snapshot_id, tenant="demo") == second
+    assert store.delete_snapshot(first.snapshot_id, tenant="demo") is False

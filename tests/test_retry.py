@@ -29,6 +29,16 @@ def test_success_on_first_attempt_no_sleep(mock_get):
     mock_sleep.assert_not_called()
     mock_get.assert_called_once()
     assert mock_get.call_args.kwargs["allow_redirects"] is False
+    assert mock_get.call_args.kwargs["timeout"] == 60
+
+
+@patch("sapsf_shared.retry.requests.get")
+def test_explicit_timeout_is_preserved(mock_get):
+    mock_get.return_value = MagicMock(status_code=200)
+
+    get_with_retry("https://example.com/thing", timeout=15)
+
+    assert mock_get.call_args.kwargs["timeout"] == 15
 
 
 @patch("sapsf_shared.retry.requests.get")

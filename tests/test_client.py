@@ -119,20 +119,28 @@ class TestCheckResponse:
         client = SFClient(auth_config)
         resp = MagicMock()
         resp.status_code = 401
-        resp.text = "Unauthorized"
+        resp.text = (
+            "<error><code>LGN0015</code>"
+            "<message>Authentication failed for the API user.</message></error>"
+        )
         with pytest.raises(SFClientError) as exc:
             client._check_response(resp, "https://api.example.com/Users")
         assert exc.value.status_code == 401
         assert "Authentication failed" in str(exc.value)
+        assert "LGN0015" in str(exc.value)
+        assert exc.value.body == "[LGN0015] Authentication failed for the API user."
 
     def test_403_raises(self, auth_config):
         client = SFClient(auth_config)
         resp = MagicMock()
         resp.status_code = 403
-        resp.text = "Forbidden"
+        resp.text = (
+            "<error><code>INSUFFICIENT_PRIVILEGES</code><message>Forbidden</message></error>"
+        )
         with pytest.raises(SFClientError) as exc:
             client._check_response(resp, "https://api.example.com/Users")
         assert exc.value.status_code == 403
+        assert "INSUFFICIENT_PRIVILEGES" in str(exc.value)
 
     def test_500_raises(self, auth_config):
         client = SFClient(auth_config)
@@ -208,6 +216,45 @@ class TestPagination:
         assert len(results) == 2
         assert results[0]["id"] == "1"
         assert results[1]["id"] == "2"
+
+    @patch("sapsf_shared.client.requests.Session.request")
+    def test_full_page_without_next_uses_numeric_skip_fallback(self, mock_request, auth_config):
+        pages = []
+        for records in (
+            [{"id": "1"}, {"id": "2"}],
+            [{"id": "3"}, {"id": "4"}],
+            [{"id": "5"}],
+        ):
+            page = MagicMock()
+            page.status_code = 200
+            page.json.return_value = {"d": {"results": records}}
+            pages.append(page)
+        mock_request.side_effect = pages
+
+        client = SFClient(auth_config, default_top=2)
+        results = client.get("PickListValueV2")
+
+        assert [row["id"] for row in results] == ["1", "2", "3", "4", "5"]
+        assert [call.kwargs["params"]["$skip"] for call in mock_request.call_args_list] == [
+            "0",
+            "2",
+            "4",
+        ]
+
+    @patch("sapsf_shared.client.requests.Session.request")
+    def test_get_iter_uses_numeric_skip_fallback(self, mock_request, auth_config):
+        page1 = MagicMock()
+        page1.status_code = 200
+        page1.json.return_value = {"d": {"results": [{"id": "1"}, {"id": "2"}]}}
+        page2 = MagicMock()
+        page2.status_code = 200
+        page2.json.return_value = {"d": {"results": []}}
+        mock_request.side_effect = [page1, page2]
+
+        client = SFClient(auth_config, default_top=2)
+
+        assert [row["id"] for row in client.get_iter("PickListValueV2")] == ["1", "2"]
+        assert mock_request.call_args_list[1].kwargs["params"]["$skip"] == "2"
 
 
 class TestGetEntityByCode:

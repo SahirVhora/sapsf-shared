@@ -303,27 +303,34 @@ class OAuth2Auth:
             if cached and cached[1] > time.monotonic():
                 logger.debug("OAuth token served from cache for %s", config.token_url)
                 return cached[0]
-        payload = urllib.parse.urlencode(
-            {
-                "grant_type": "client_credentials",
-                "client_id": config.client_id,
-                "client_secret": config.client_secret,
-                "company_id": config.company_id,
-            }
-        ).encode()
 
-        req = urllib.request.Request(config.token_url, data=payload, method="POST")
-        req.add_header("Content-Type", "application/x-www-form-urlencoded")
+        # requests handles ``Content-Type: application/x-www-form-urlencoded``
+        # and URL-encoding automatically when ``data=`` is a dict.
+        payload = {
+            "grant_type": "client_credentials",
+            "client_id": config.client_id,
+            "client_secret": config.client_secret,
+            "company_id": config.company_id,
+        }
 
         try:
-            with urllib.request.urlopen(req, timeout=config.timeout_sec) as resp:
-                data = json.loads(resp.read())
-        except urllib.error.HTTPError as exc:
-            body = exc.read().decode("utf-8", errors="replace")[:500]
-            raise AuthError(
-                f"OAuth token request failed: HTTP {exc.code}",
-                details=body,
-            ) from exc
+            # OAuth IdP endpoints never legitimately return 3xx for a
+            # client-credentials grant; force allow_redirects=False so a
+            # crafted redirect cannot siphon the token.
+            resp = requests.post(
+                config.token_url,
+                data=payload,
+                timeout=config.timeout_sec,
+                allow_redirects=False,
+            )
+            if not resp.ok:
+                raise AuthError(
+                    f"OAuth token request failed: HTTP {resp.status_code}",
+                    details=resp.text[:500],
+                )
+            data = resp.json()
+        except AuthError:
+            raise
         except Exception as exc:
             raise AuthError(f"OAuth token request failed: {exc}") from exc
 

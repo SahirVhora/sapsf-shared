@@ -37,12 +37,14 @@ Issues = "https://github.com/SahirVhora/sapsf-shared/issues"
 
 [project.optional-dependencies]
 flask = ["flask>=2.3"]
+excel = ["openpyxl>=3.1"]
 dev = [
     "pytest>=8.0",
     "pytest-xdist>=3.0",
     "responses>=0.25",
     "mypy>=1.0",
     "ruff>=0.6",
+    "openpyxl>=3.1",
 ]
 
 [tool.hatch.build.targets.wheel]

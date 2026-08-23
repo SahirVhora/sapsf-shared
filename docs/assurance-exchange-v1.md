@@ -33,13 +33,14 @@ This is the common portfolio contract for an engagement, one deterministic tool 
 
 ## Adoption sequence
 
-1. `migration_tool` and `sf-validator`: mapping and load-gate findings.
+1. `migration_tool` and `sf-ec-hcm-validator`: mapping and load-gate findings.
 2. `sf-position-integrity-checker`: position and Job Information integrity findings.
 3. `sf-config-compare-ec`: source/target readiness findings and worklist actions.
 4. `sf-change-ledger`: snapshot-change findings and CAB evidence.
 5. `sf-config-debt-radar`: current-state debt findings.
 6. `sf-release-update`/`sf-impact-brief`: vendor change and release-test actions.
-7. SF Compass: aggregate documents into engagement and executive views.
+7. SF Compass: aggregate documents into the implemented
+   [`sapsf-engagement-pack/v1`](engagement-pack-v1.md) G0-G4 decision view.
 
 ## Python usage
 

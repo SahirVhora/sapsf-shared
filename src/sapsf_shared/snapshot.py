@@ -8,6 +8,7 @@ need to read snapshots.
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import json
 import os
@@ -178,6 +179,26 @@ class SnapshotStore:
         if len(matches) > 1:
             raise SFConfigError(f"Snapshot id prefix is ambiguous: {snapshot_id}")
         return matches[0]
+
+    def delete_snapshot(self, snapshot_id: str, *, tenant: str | None = None) -> bool:
+        """Delete one exactly resolved snapshot and return whether it existed.
+
+        Callers should create and verify any replacement snapshot before using
+        this method. The resolved directory is constrained to ``snapshots_root``
+        so a malformed manifest cannot turn snapshot cleanup into a broad
+        filesystem deletion.
+        """
+        ref = self.get_snapshot(snapshot_id, tenant=tenant)
+        if not ref:
+            return False
+        target = ref.path.resolve()
+        root = self.snapshots_root.resolve()
+        if not target.is_relative_to(root) or target.parent == root:
+            raise SFConfigError(f"Refusing to delete snapshot outside the store: {target}")
+        shutil.rmtree(target)
+        with contextlib.suppress(OSError):
+            target.parent.rmdir()
+        return True
 
     def read_collection(self, snapshot_id: str, collection: str) -> list[dict[str, Any]]:
         """Read all records from one collection in a snapshot."""
