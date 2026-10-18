@@ -326,3 +326,26 @@ class TestBuildAuthHeaders:
         )
         headers = build_auth_headers(cfg)
         assert headers["Authorization"] == "Bearer tok123"
+
+
+@pytest.mark.parametrize(
+    "url", ["http://tenant.example", "https://user:pass@tenant.example", "https:///missing-host"]
+)
+def test_rejects_unsafe_credentialed_service_urls(url):
+    with pytest.raises(AuthError, match="HTTPS"):
+        AuthConfig(base_url=url, username="audit", password="synthetic").validate()
+
+
+def test_rejects_http_oauth_endpoint_before_sending_secrets():
+    config = AuthConfig(
+        base_url="https://tenant.example",
+        auth_type="oauth2",
+        client_id="audit",
+        client_secret="synthetic",
+        company_id="audit",
+        token_url="http://tenant.example/oauth/token",
+    )
+    with patch("sapsf_shared.auth.requests.post") as post:
+        with pytest.raises(AuthError, match="HTTPS"):
+            OAuth2Auth.fetch_token(config)
+        post.assert_not_called()
