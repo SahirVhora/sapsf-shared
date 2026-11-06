@@ -50,6 +50,26 @@ class TestBearerAuth:
 
 
 class TestAuthConfig:
+    @pytest.mark.parametrize(
+        "url", ["http://api.example.com", "https://user:secret@api.example.com"]
+    )
+    def test_rejects_insecure_credential_destination(self, url):
+        cfg = AuthConfig(base_url=url, username="user", password="synthetic")
+        with pytest.raises(AuthError, match="HTTPS"):
+            cfg.validate()
+
+    def test_rejects_http_token_endpoint(self):
+        cfg = AuthConfig(
+            base_url="https://api.example.com",
+            token_url="http://api.example.com/oauth/token",
+            auth_type="oauth2",
+            client_id="id",
+            client_secret="synthetic",
+            company_id="demo",
+        )
+        with pytest.raises(AuthError, match="token_url"):
+            cfg.validate()
+
     def test_basic_validation(self):
         cfg = AuthConfig(
             base_url="https://api.example.com",

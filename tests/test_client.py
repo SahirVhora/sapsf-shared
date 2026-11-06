@@ -390,3 +390,38 @@ class TestContextManager:
         with SFClient(auth_config) as client:
             assert client._session is not None
         # After exit, session should be closed (no error means success)
+
+
+class TestPerformanceDefaults:
+    @patch("sapsf_shared.client.requests.Session.request")
+    def test_default_page_size_is_sf_maximum(self, mock_request, auth_config):
+        mock_request.return_value.status_code = 200
+        mock_request.return_value.json.return_value = {"d": {"results": []}}
+
+        SFClient(auth_config).get("Users")
+
+        assert mock_request.call_args.kwargs["params"]["$top"] == "1000"
+
+    @patch("sapsf_shared.client.time.sleep")
+    @patch("sapsf_shared.client.requests.Session.request")
+    def test_retry_after_header_sets_wait(self, mock_request, mock_sleep, auth_config):
+        throttled = MagicMock(status_code=429, headers={"Retry-After": "5"})
+        ok = MagicMock(status_code=200)
+        mock_request.side_effect = [throttled, ok]
+
+        SFClient(auth_config)._request_with_retry("GET", "https://api.example.com/Users")
+
+        mock_sleep.assert_called_once_with(5.0)
+
+    @patch("sapsf_shared.client.time.sleep")
+    @patch("sapsf_shared.client.requests.Session.request")
+    def test_non_numeric_retry_after_uses_backoff(self, mock_request, mock_sleep, auth_config):
+        throttled = MagicMock(
+            status_code=503, headers={"Retry-After": "Wed, 21 Oct 2026 07:28:00 GMT"}
+        )
+        ok = MagicMock(status_code=200)
+        mock_request.side_effect = [throttled, ok]
+
+        SFClient(auth_config)._request_with_retry("GET", "https://api.example.com/Users")
+
+        mock_sleep.assert_called_once_with(1)

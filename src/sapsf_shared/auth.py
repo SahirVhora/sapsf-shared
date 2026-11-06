@@ -196,11 +196,15 @@ class AuthConfig:
 
     def validate(self) -> None:
         """Raise AuthError if required fields are missing."""
-        if not self.base_url.startswith(("https://", "http://")):
+        parsed = urllib.parse.urlsplit(self.base_url)
+        if parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password:
             raise AuthError(
-                "base_url must start with https:// or http://",
-                details=f"got: {self.base_url}",
+                "base_url must be an HTTPS URL without embedded credentials",
             )
+        if self.token_url:
+            token = urllib.parse.urlsplit(self.token_url)
+            if token.scheme != "https" or not token.hostname or token.username or token.password:
+                raise AuthError("token_url must be an HTTPS URL without embedded credentials")
 
         if self.auth_type == "basic":
             if not self.username:
