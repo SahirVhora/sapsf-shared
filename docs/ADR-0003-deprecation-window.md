@@ -1,19 +1,18 @@
-# ADR-0003 — Local-token Auth: Header-First, Query-String Deprecated
+# ADR-0003 — Local-token Auth: Header-Only
 
 | Field      | Value                                                          |
 |------------|----------------------------------------------------------------|
-| Status     | Accepted, in deprecation window                                |
+| Status     | Accepted and implemented                                       |
 | Date       | 2026-07-25                                                     |
 | Owner      | sapsf platform                                                 |
 | Closes     | audit-finding R-006 (legacy `?token=` channel on local Flask) |
-| Removal    | 2026-10-25                                                     |
+| Removal    | 2026-08-31                                                     |
 
 ## Context
 
 The sapsf portfolio's local Flask surfaces historically accepted the
 `?token=...` query-string channel as a fallback when an authentication header
-was not provided. This was once useful because shell scripts had trouble
-passing headers and curl users naturally reach for `--data-urlencode`.
+was not provided.
 
 With the move to 12-factor share-nothing deploys and the proliferation of
 cross-tool log scrapers, query-string tokens are now a probe target:
@@ -28,70 +27,24 @@ Move HTTP-token-gated sapsf local Flask surfaces to header-only. New
 write-path surfaces use the shared helper
 `sapsf_shared.flask_base.require_local_token` - header-only,
 with 403 responses for client authentication failures. A missing server-side
-token configuration returns 503. For legacy surfaces still accepting `?token=` (notably
-`sf-object-sync/web_ui/app.py`) we add a single `app.logger.warning`
-per request so operators see probe traffic in observability.
+token configuration returns 503. The compatibility helper
+`check_local_token` retains its documented open-when-unconfigured behaviour
+for existing read-only routes, but rejects query-string credentials.
 
 Local credential-management Flask surfaces (encrypted-at-rest secrets,
 session CSRF on every POST) are out of scope: they have no HTTP token
 channel to deprecate. See "Applicability by surface type" below.
 
-A regression pin at `sf-object-sync/tests/test_web_ui_auth.py` freezes
-the current deprecation behaviour: header works, query works but warns,
-wrong/missing returns 401.
-
-## Deprecation timeline
-
-| Phase                | Date       | Surface state                                                                                  |
-|----------------------|------------|------------------------------------------------------------------------------------------------|
-| Now                  | 2026-07-25 | Header primary. `?token=` accepted, ONE warning log per request. Tests pin behaviour.          |
-| Removal candidate    | 2026-10-25 | `?token=` returns 401 with no warning. Test's fallback case flips to a permanent 401 pin.      |
-| Post-removal cleanup | 2026-11-25 | Query-string branch removed from `_require_token`; only `X-Auth-Token` and the header fallback. |
-
-If a critical operator cannot migrate by 2026-10-25, file the blocker at
-`_shared/docs/DECISIONS_pending_owner_approval.md` with the specific
-caller URL and rolling-impact estimate.
+A regression pin in `_shared/tests/test_flask_base.py` verifies that both
+shared helpers reject `?token=` and only accept the configured header.
 
 ## Operator action
 
-By **2026-10-25**, every script and pocket-reference doc that hits an
-HTTP-token-gated local sapsf Flask surface (see the table below) must
-switch from `?token=...` to the surface's header: `X-Auth-Token` for
-sf-object-sync and `X-Report-Token` for report endpoints. After that
-date, **sf-object-sync** returns 401 for the `?token=` channel with no
-warning; silent breakage is the failure mode for stragglers. The
-back-compat reader `check_local_token` (used by `sf-config-compare{,ec}`
-and `sf-metadata-vault`) keeps emitting its existing warning log past
-the cutover on read-only report paths - the warning stays on by design.
-
-**Pre-cutover sweep (mandatory by 2026-10-25):**
-Run these fixed-string greps (no regex, copy-paste safe):
-
-  ```
-  grep -rn --include='*.py' -F 'request.args.get("token' sapsf/
-  grep -rn --include='*.py' -F 'request.args.get("_token' sapsf/
-  grep -rn --include='*.py' -F 'legacy_query_arg' sapsf/
-  ```
-
-Together they must identify only the two implementation files in the next
-bullet (test files may also pin this behavior). If they surface another
-implementation file, the deprecation list is incomplete and
-the cutover cannot proceed without an ADR amendment. The `-F` flag
-keeps the patterns literal so an operator can paste them blind on
-2026-10-25 and trust the output.
-
-**Files to edit on 2026-10-25:**
-* `sapsf/sf-object-sync/web_ui/app.py` -- drop the legacy branch in
-  `_require_token`; the regression pin
-  `tests/test_web_ui_auth.py::test_query_token_falls_back_and_logs_deprecation`
-  flips to a permanent 401 invariant.
-* `sapsf/_shared/src/sapsf_shared/flask_base.py` -- decide on the
-  future of `check_local_token`'s `?token=` fallback per the
-  write-path-vs-read-path rule in the Compliance section. This ADR
-  does not force removal here; reviewers must choose per surface.
-
-Local credential-management surfaces (see second table) are
-unaffected by ADR-0003 -- they do not have an HTTP token channel.
+Every script and pocket-reference document that calls an HTTP-token-gated
+local Flask surface must use `X-Auth-Token` for sf-object-sync and
+`X-Report-Token` for report endpoints. Requests containing `?token=` are
+rejected and logged. Local credential-management surfaces remain unaffected
+because they do not expose an HTTP token channel.
 
 ## Applicability by surface type
 
@@ -106,10 +59,10 @@ mislead the next maintainer.
 
 | Tool | Helper used | Channel accepted today | Migration target |
 |------|-------------|------------------------|------------------|
-| `sf-object-sync` (`web_ui/app.py`) | local `_require_token` | header + query (warn) | `require_local_token` (header-only) |
-| `sf-config-compare` (`app.py`) | `check_local_token` | header + query | preserves caller-defined denial status |
-| `sf-config-compare-ec` (`app.py` + `core/api.py`) | `check_local_token` | header + query | preserves caller-defined denial status |
-| `sf-metadata-vault` (`app.py`) | `check_local_token` | header + query | preserves caller-defined denial status |
+| `sf-object-sync` (`web_ui/app.py`) | local `_require_token` | header only | `require_local_token` (header-only) |
+| `sf-config-compare` (`app.py`) | `check_local_token` | header only | preserves caller-defined denial status |
+| `sf-config-compare-ec` (`app.py` + `core/api.py`) | `check_local_token` | header only | preserves caller-defined denial status |
+| `sf-metadata-vault` (`app.py`) | `check_local_token` | header only | preserves caller-defined denial status |
 
 ### Local credential-management surfaces (ADR-0003 does not apply)
 
@@ -128,20 +81,12 @@ because all are read-only report endpoints. Write-path gates
 
 * **Write paths** MUST use `require_local_token` (header-only, with 403 for
   client authentication failures and 503 for missing server configuration).
-  `sf-object-sync`'s local `_require_token` is
-  grandfathered through the 2026-10-25 cutover window only -- see
-  Operator action for the exact cutover rules. Emitting `?token=` to
-  any other hardened write surface after the cutover returns 401; no
-  new code path should accept the channel through a back-compat
-  reader.
-* **Read paths** (report endpoints) may stay on `check_local_token` for
-  back-compat reads, provided every rejection emits an
-  `app.logger.warning` with `path=` and `remote=` so SOC can grep probe
-  traffic. `check_local_token` is not "banned"; it is the deliberate
-  reader helper, distinct from the writer helper.
+* **Read paths** (report endpoints) may stay on `check_local_token` when
+  they intentionally remain open without a configured token. It accepts only
+  the configured header and logs rejected query-string attempts.
 * New shared Flask blueprints default to `require_local_token`; only fall
-  back to `check_local_token` when the endpoint is read-only and the
-  regression pin covers both channels.
+  back to `check_local_token` when the endpoint is read-only and its
+  open-when-unconfigured behaviour is required.
 * When `WEB_UI_TOKEN` is unset, `_require_token` short-circuits open.
   Loopback binding is enforced **per tool**:
   - `sf-object-sync` (Table 1) -- env-override via `HOST`

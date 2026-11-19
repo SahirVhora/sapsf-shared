@@ -56,6 +56,12 @@ class SFApp(Flask):
             **kwargs,
         )
 
+        # Reject DNS-rebinding Host headers before serving local reports.
+        configured_hosts = os.environ.get("SAPSF_TRUSTED_HOSTS", "")
+        self.config["TRUSTED_HOSTS"] = [
+            host.strip() for host in configured_hosts.split(",") if host.strip()
+        ] or ["localhost", "127.0.0.1", "[::1]"]
+
         # Secret key
         self.secret_key = secret_key or os.environ.get("FLASK_SECRET_KEY") or secrets.token_hex(32)
 
@@ -300,48 +306,34 @@ def check_local_token(
     header_name: str = "X-Report-Token",
     legacy_query_arg: str = "token",
 ) -> bool:
-    """Minimum-disruption local-token check used by existing report routes.
+    """Header-only local-token check for existing report routes.
 
-    This helper exists so the four ADR-0003 sites (sf-config-compare,
-    sf-config-compare-ec, sf-metadata-vault, sf-object-sync) can adopt
-    header-first auth **without** breaking the existing flow while owners
-    transition clients. Behaviour:
-
-    1. ``configured`` empty / falsy → return ``True`` (no token required for
-       this deployment, matches the existing inline guards).
-    2. Header ``header_name`` provided and matches → ``True``.
-    3. Otherwise fall back to legacy ``?{legacy_query_arg}=`` (with warning
-       log so it is visible in monitoring).
-    4. Returns ``False`` if neither matches; the caller aborts 403.
-
-    The legacy query-string fallback is **deprecated**; new code should use
-    :func:`require_local_token` instead. We keep this helper as the bridge
-    because it keeps the existing ``_check_report_token`` call sites working
-    until query-string-using clients (links in older reports) are updated.
+    ``check_local_token`` keeps report routes that intentionally remain open
+    when their token is unset, but it no longer accepts credentials in query
+    strings. New routes should use :func:`require_local_token`, which fails
+    closed when a token is not configured.
 
     Args:
         configured: The configured token (e.g. ``REPORT_ACCESS_TOKEN``).
         header_name: Request header to read first. Default ``X-Report-Token``.
-        legacy_query_arg: Query-string parameter name accepted as fallback.
+        legacy_query_arg: Deprecated query-string parameter name to reject.
 
     Returns:
         ``True`` if the request is authorised, ``False`` otherwise.
     """
     if not configured:
         return True
-    supplied = request.headers.get(header_name, "")
-    if supplied and secrets.compare_digest(supplied.encode("utf-8"), configured.encode("utf-8")):
-        return True
-    legacy = request.args.get(legacy_query_arg, "")
-    if legacy and secrets.compare_digest(legacy.encode("utf-8"), configured.encode("utf-8")):
+    if legacy_query_arg in request.args:
         current_app.logger.warning(
-            "check_local_token accepted deprecated query token: path=%s remote=%s "
-            "query_arg=%s (switch to %s header per ADR-0003)",
+            "check_local_token rejected request: reason=legacy_query path=%s remote=%s "
+            "query_arg=%s (ADR-0003: header-only)",
             request.path,
             request.remote_addr,
             legacy_query_arg,
-            header_name,
         )
+        return False
+    supplied = request.headers.get(header_name, "")
+    if supplied and secrets.compare_digest(supplied.encode("utf-8"), configured.encode("utf-8")):
         return True
     current_app.logger.warning(
         "check_local_token rejected request: reason=missing_or_invalid_token path=%s remote=%s",
