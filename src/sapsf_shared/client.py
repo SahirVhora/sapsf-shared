@@ -14,7 +14,7 @@ import json
 import logging
 import re
 import time
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
 from typing import Any
 
 import requests
@@ -31,7 +31,26 @@ logger = logging.getLogger(__name__)
 RETRY_STATUS_CODES = frozenset({429, 500, 502, 503, 504})
 MAX_RETRIES = 3
 BACKOFF_SECONDS = (1, 2, 4)
+MAX_RETRY_AFTER_SECONDS = 60
 RETRYABLE_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
+
+
+def retry_wait_seconds(resp: requests.Response | None, attempt: int) -> float:
+    """Return the back-off before the next attempt.
+
+    A numeric ``Retry-After`` header on a 429/503 is honoured (capped at
+    MAX_RETRY_AFTER_SECONDS) so throttled calls wait as long as the tenant
+    asks instead of burning the remaining attempts. Otherwise the fixed
+    exponential schedule applies.
+    """
+    fallback = BACKOFF_SECONDS[min(attempt, len(BACKOFF_SECONDS) - 1)]
+    if resp is None:
+        return fallback
+    headers = getattr(resp, "headers", None)
+    value = headers.get("Retry-After") if isinstance(headers, Mapping) else None
+    if isinstance(value, str) and value.strip().isdigit():
+        return float(min(int(value.strip()), MAX_RETRY_AFTER_SECONDS))
+    return fallback
 
 
 class SFClient:
@@ -47,7 +66,9 @@ class SFClient:
         self,
         auth_config: AuthConfig,
         *,
-        default_top: int = 100,
+        # SuccessFactors serves up to 1000 records per OData v2 page; smaller
+        # pages only multiply round trips.
+        default_top: int = 1000,
         json_indent: int | None = None,
         pool_connections: int = 10,
         pool_maxsize: int = 20,
@@ -125,7 +146,7 @@ class SFClient:
                         body=resp.text[:2000],
                         url=url,
                     )
-                wait = BACKOFF_SECONDS[min(attempt, len(BACKOFF_SECONDS) - 1)]
+                wait = retry_wait_seconds(resp, attempt)
                 logger.warning(
                     "HTTP %s from %s (attempt %d/%d) - retrying in %ds",
                     resp.status_code,
@@ -430,11 +451,7 @@ class SFClient:
         Raises SFClientError on network / parsing failures only.
         """
         url = self._url(entity_set)
-        logger.debug(
-            "POST %s payload=%s",
-            url,
-            json.dumps(payload, indent=self.json_indent)[:500],
-        )
+        logger.debug("POST %s", url)
         resp = self._request_with_retry("POST", url, json=payload)
         body = self._check_response(resp, url)
         return resp.status_code, body
@@ -449,7 +466,7 @@ class SFClient:
         Returns (http_status_code, response_body_dict).
         """
         url = self._url(entity_set)
-        logger.debug("PATCH %s payload=%s", url, json.dumps(payload)[:500])
+        logger.debug("PATCH %s", url)
         resp = self._request_with_retry("PATCH", url, json=payload)
         body = self._check_response(resp, url)
         return resp.status_code, body

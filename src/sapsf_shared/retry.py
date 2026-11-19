@@ -14,22 +14,44 @@ This module exposes that policy as a plain function so any caller doing
 
 Reuses the exact same constants as SFClient (RETRY_STATUS_CODES, MAX_RETRIES,
 BACKOFF_SECONDS) so behavior is consistent across every tool built on this SDK.
+
+Calls reuse a per-thread keep-alive session so paginated pulls do not pay a
+new TCP/TLS handshake per page. That session refuses cookies: callers pass
+their own credentials per call, and two tenants can share one API host, so a
+server session cookie from one caller must never ride along with another.
+Callers that manage their own session can pass ``session=``.
 """
 
 from __future__ import annotations
 
 import logging
+import threading
 import time
+from http.cookiejar import DefaultCookiePolicy
 from typing import Any
 
 import requests
 
-from sapsf_shared.client import BACKOFF_SECONDS, MAX_RETRIES, RETRY_STATUS_CODES
+from sapsf_shared.client import MAX_RETRIES, RETRY_STATUS_CODES, retry_wait_seconds
 
 logger = logging.getLogger(__name__)
 
+_local = threading.local()
 
-def get_with_retry(url: str, **kwargs: Any) -> requests.Response:
+
+def _thread_session() -> requests.Session:
+    """Return this thread's cookie-less keep-alive session."""
+    session = getattr(_local, "session", None)
+    if session is None:
+        session = requests.Session()
+        session.cookies.set_policy(DefaultCookiePolicy(allowed_domains=[]))
+        _local.session = session
+    return session
+
+
+def get_with_retry(
+    url: str, *, session: requests.Session | None = None, **kwargs: Any
+) -> requests.Response:
     """GET *url* with the shared retry-on-429/5xx policy.
 
     Retries transient failures (429, 500, 502, 503, 504, and network errors)
@@ -49,13 +71,14 @@ def get_with_retry(url: str, **kwargs: Any) -> requests.Response:
     kwargs["allow_redirects"] = False
     # Bound stalled connections while preserving a caller's explicit timeout.
     timeout = kwargs.pop("timeout", 60)
+    http = session or _thread_session()
 
     for attempt in range(MAX_RETRIES):
         try:
-            resp = requests.get(url, timeout=timeout, **kwargs)
+            resp = http.get(url, timeout=timeout, **kwargs)
         except requests.exceptions.RequestException as exc:
             last_exc = exc
-            wait = BACKOFF_SECONDS[min(attempt, len(BACKOFF_SECONDS) - 1)]
+            wait = retry_wait_seconds(None, attempt)
             logger.warning(
                 "Request error on %s (attempt %d/%d): %s - retrying in %ds",
                 url,
@@ -72,7 +95,7 @@ def get_with_retry(url: str, **kwargs: Any) -> requests.Response:
             return resp
 
         last_exc = None
-        wait = BACKOFF_SECONDS[min(attempt, len(BACKOFF_SECONDS) - 1)]
+        wait = retry_wait_seconds(resp, attempt)
         logger.warning(
             "HTTP %s from %s (attempt %d/%d) - retrying in %ds",
             resp.status_code,

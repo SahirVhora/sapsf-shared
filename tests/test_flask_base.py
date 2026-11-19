@@ -6,6 +6,11 @@ from sapsf_shared.flask_base import check_local_token, create_app, require_local
 
 
 class TestSFApp:
+    def test_rejects_foreign_host_before_serving_local_data(self):
+        app = create_app("test_app")
+        response = app.test_client().get("/api/health", headers={"Host": "untrusted.example"})
+        assert response.status_code == 400
+
     def test_flask_helpers_are_direct_but_not_wildcard_exports(self):
         import sapsf_shared
 
@@ -199,7 +204,7 @@ class TestLocalTokenHelpers:
             assert check_local_token("expected")
         assert not caplog.text
 
-    def test_check_local_token_accepts_legacy_query_once_with_warning(self, caplog):
+    def test_check_local_token_rejects_legacy_query_with_warning(self, caplog):
         app = create_app("token_test", enable_csrf=False)
         with app.test_client() as client, caplog.at_level("WARNING"):
 
@@ -208,8 +213,8 @@ class TestLocalTokenHelpers:
                 return ({"ok": check_local_token("expected")}, 200)
 
             resp = client.get("/report?token=expected")
-        assert resp.get_json() == {"ok": True}
-        assert caplog.text.count("accepted deprecated query token") == 1
+        assert resp.get_json() == {"ok": False}
+        assert caplog.text.count("reason=legacy_query") == 1
         assert "path=/report" in caplog.text
         assert "remote=127.0.0.1" in caplog.text
 
